@@ -1,0 +1,6 @@
+Patched factory script to use shallow/single-ref git clone to avoid full-history clone failures.
+This is intended to avoid 'fatal: fetch-pack: invalid index-pack output' on corporate/proxy networks.
+Output remains under C:\HermesAirgapFactory\output.
+
+Patched shallow clone block in factory/hermes_latest_flexible_airgap_factory/PrepareHermesLatestAirgapBundle.ps1
+PatchedAt: 2026-06-15T15:54:31

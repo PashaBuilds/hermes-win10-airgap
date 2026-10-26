@@ -1,0 +1,18 @@
+HermesAirgapFactoryAuto v4.6 - Windows 10 legacy command package
+
+Factory PC (internet-connected, existing v0.22.2 native payload):
+  cd C:\HermesAirgapFactoryAuto_v4
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ValidateFactoryScripts.ps1
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\BuildHermesAirgapBundle.ps1 -VersionRef v0.22.2 -PackageOnly -Win10Compat
+
+Output (separate from your successful 4GB Desktop ZIP):
+  C:\H4\output\HermesAirgapBundle_v0.22.2_Win10_AutoCleanVenv.zip
+
+On isolated Windows 10 TEST computer: verify SHA256, extract to short path; then inside extracted folder:
+  InstallOrUpdateHermesAirgapped.bat Auto CleanVenv
+
+After successful install:
+  %LOCALAPPDATA%\hermes\hermes-agent\bin\hermes.exe --version
+
+IMPORTANT: This package is native CLI + Web/MCP assets only. No Windows10 Desktop GUI promised.
+No unsafe deletion of PM/managed tools; existing Hermes home preserved and backed up.

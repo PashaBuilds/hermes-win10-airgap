@@ -1,0 +1,4 @@
+Fixed PowerShell parser error: param(...) must be the first executable statement in the script.
+Output remains under C:\HermesAirgapFactory\output and work under C:\HermesAirgapFactory\work.
+
+Fixed param block ordering and output paths in factory/hermes_latest_flexible_airgap_factory/PrepareHermesLatestAirgapBundle.ps1

@@ -1,0 +1,2 @@
+Patched media pack factory so Mermaid CLI npm install is deferred to intranet side.
+Also writes package.json as ASCII/no-BOM to avoid JSON parse error with Windows PowerShell 5.1 UTF-8 BOM.

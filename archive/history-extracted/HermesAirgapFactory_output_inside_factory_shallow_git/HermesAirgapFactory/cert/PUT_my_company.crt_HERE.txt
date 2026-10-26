@@ -1,0 +1,1 @@
+Put my_company.crt here when preparing certificates for intranet machines.

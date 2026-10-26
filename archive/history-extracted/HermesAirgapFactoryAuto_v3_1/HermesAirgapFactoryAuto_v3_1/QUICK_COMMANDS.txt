@@ -1,0 +1,13 @@
+INTERNET:
+  cd /d C:\HermesAirgapFactoryAuto_v3
+  BuildHermesAirgapBundle.bat
+
+PINNED RELEASE:
+  BuildHermesAirgapBundle.bat v2026.9.24
+
+INTRANET:
+  cd /d C:\HermesDeploy\extracted\<bundle>
+  InstallOrUpdateHermesAirgapped.bat Auto CleanVenv
+
+VERIFY ZIP:
+  powershell -ExecutionPolicy Bypass -File .\VerifyHermesAirgapBundle.ps1 -ZipPath "C:\path\bundle.zip"

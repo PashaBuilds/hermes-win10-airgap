@@ -1,0 +1,6 @@
+#!/bin/bash
+# Minimal robocopy stand-in for the Linux simulation: copy SRC/. to DST, honour /LOG:, exit 1 (= "files copied").
+src="$1"; dst="$2"; log=""
+for a in "$@"; do case "$a" in /LOG:*) log="${a#/LOG:}";; esac; done
+mkdir -p "$dst" && cp -a "$src/." "$dst/" && { [ -n "$log" ] && echo "copied" > "$log"; exit 1; }
+exit 16

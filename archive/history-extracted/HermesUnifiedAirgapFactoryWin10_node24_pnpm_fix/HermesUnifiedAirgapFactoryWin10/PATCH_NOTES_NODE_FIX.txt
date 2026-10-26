@@ -1,0 +1,3 @@
+Fixed Desktop build failure when Node/npm is not installed on the internet machine.
+The factory now downloads a portable Node.js 22.x Windows x64 ZIP into tools\node and prepends it to PATH before running `hermes desktop --build-only`.
+The intranet installer also adds bundled Node to User PATH if present.

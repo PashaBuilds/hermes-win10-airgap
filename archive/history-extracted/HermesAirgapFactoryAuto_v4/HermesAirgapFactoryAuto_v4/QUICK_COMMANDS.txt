@@ -1,0 +1,29 @@
+HERMES AIRGAP FACTORY v4 / 2026-10-15
+
+Internet PC (Windows x64, Python >=3.11 and Git required):
+  cd C:\HermesAirgapFactoryAuto_v4
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\BuildHermesAirgapBundle.ps1 -VersionRef v0.22.1
+
+First test ONLY native/offline component:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\BuildHermesAirgapBundle.ps1 -VersionRef v0.22.1 -NoDesktop
+
+Use newest stable release automatically:
+  BuildHermesAirgapBundle.bat
+
+UI-only attempt (not a fully bundled desktop runtime):
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\BuildHermesAirgapBundle.ps1 -VersionRef v0.22.1 -DesktopVariant light
+
+Corporate PEM CA example:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\BuildHermesAirgapBundle.ps1 -VersionRef v0.22.1 -CaFile C:\CorpCA\root.pem
+
+Main output:
+  C:\H4\output\HermesAirgap_v0.22.1_Slim_native.zip OR HermesAirgap_v0.22.1_Slim_desktop.zip
+  C:\H4\jobs\v0.22.1_Slim\result.json
+  C:\H4\logs\factory_*.log
+
+Intranet PC:
+  Check ZIP SHA256 with Get-FileHash, extract, then run VerifyOfflineBundle.ps1
+  Run InstallOrUpdateHermesAirgapped.bat inside extracted folder
+  Launch: %LOCALAPPDATA%\HAgent\hermes.cmd --version
+
+Status: Scripts are Windows-targeted but NOT yet run/validated on Windows by their author.

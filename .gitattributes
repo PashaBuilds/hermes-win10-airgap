@@ -1,0 +1,9 @@
+# Windows scripts must keep CRLF (cmd.exe/PowerShell 5.1); shell scripts stay LF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+*.sh    text eol=lf
+*.py    text eol=lf
+tests/sim/stubs/*  text eol=lf
+*.zip   binary
+*.exe   binary

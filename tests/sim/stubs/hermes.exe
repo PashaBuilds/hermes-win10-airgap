@@ -1,0 +1,13 @@
+#!/bin/bash
+# Stand-in for the Hermes CLI launcher. Writes to stderr on purpose (PS 5.1 2>&1 regression).
+#   SIM_VERSION_TEXT  : what --version prints   (default "Hermes Agent v0.22.4 · stable")
+#   SIM_FAIL_ACTIVE=1 : fail when started from an ACTIVE install (.../hermes/app/...)
+echo "stderr noise" >&2
+if [ -n "$SIM_FAIL_ACTIVE" ]; then case "$0" in */hermes/app/*) echo "simulated failure in active app" >&2; exit 9;; esac; fi
+case "$1" in
+  --version) echo "${SIM_VERSION_TEXT:-Hermes Agent v0.22.4 · stable}";;
+  --help) echo "usage: hermes [-h] ..."; echo "Türkçe ğüşıİ ✓";;
+  config) echo "migrated" >> "$HERMES_HOME/config.yaml";;
+  doctor) echo "doctor: no model configured"; exit 3;;
+esac
+exit 0

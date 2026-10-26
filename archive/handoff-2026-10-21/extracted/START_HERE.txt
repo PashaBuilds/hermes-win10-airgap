@@ -1,0 +1,20 @@
+HERMES AIR-GAP OTURUM DEVIR PAKETI - 2026-10-21
+=============================================
+
+1. ONCE HERMES_DEVIR_NOTLARI_YENI_OTURUM_2026-10-21.md dosyasini oku.
+2. Yeni ChatGPT sohbetine hem bu Markdown dosyasini hem de tam paketi yukle.
+3. Ilk ele alinacak olay: uretim Windows 10 bilgisayarindaki TestHermesWin10Pilot.bat
+   v1 'GetFullPath path is not of a legal form' hatasi. 'guncel' klasorundeki
+   HermesWin10_UretimPilot_v1_1.zip DUZELTMEYI ICERIYOR; henüz Win10'da denenmedi.
+4. Asil Hermes v0.22.2 1.7 GB civari Win10 bundle ZIP bu pakette YOK;
+   kullanicinin C:\H4\output klasorundedir.
+5. Mevcut %LOCALAPPDATA%\hermes uretim kurulumunun uzerine HENUZ GUNCELLEME YAPMA.
+   Yan yana pilot basarili olana kadar eski kurulum korunmali.
+6. SHA256_MANIFEST.txt icindeki tum girdiler bu paketteki gercek dosyalara aittir.
+
+En son kullanilan factory:
+  guncel/HermesAirgapFactoryAuto_v4_6.zip
+En son kullanilan pilot (v1.1):
+  guncel/HermesWin10_UretimPilot_v1_1.zip
+
+Not: 'arsiv' klasorundeki tarihi ZIP'leri yanlislikla calistirma.

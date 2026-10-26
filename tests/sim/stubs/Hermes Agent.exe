@@ -1,0 +1,3 @@
+#!/bin/bash
+# Stand-in for the Electron app: stays alive like a GUI would, logs into HERMES_HOME.
+mkdir -p "$HERMES_HOME/logs"; echo "desktop started HERMES_HOME=$HERMES_HOME" >> "$HERMES_HOME/logs/desktop.log"; sleep ${SIM_APP_SECONDS:-15}

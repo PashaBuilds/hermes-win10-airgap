@@ -1,0 +1,3 @@
+This package keeps generated HermesAirgapBundle ZIP files under C:\HermesAirgapFactory\output instead of Desktop.
+
+Patched factory/hermes_latest_flexible_airgap_factory/PrepareHermesLatestAirgapBundle.ps1

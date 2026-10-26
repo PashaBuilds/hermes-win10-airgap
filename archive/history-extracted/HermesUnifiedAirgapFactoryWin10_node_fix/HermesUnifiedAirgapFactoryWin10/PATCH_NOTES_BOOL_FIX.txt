@@ -1,0 +1,2 @@
+Fixed BuildCompleteHermesAirgapBundle.bat/ps1 IncludeDesktop parameter issue.
+The .bat no longer passes '-IncludeDesktop $true'; the PS1 also normalizes string booleans safely.

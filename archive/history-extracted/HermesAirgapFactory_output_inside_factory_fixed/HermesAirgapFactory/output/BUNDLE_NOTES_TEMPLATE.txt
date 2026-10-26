@@ -1,0 +1,20 @@
+Hermes Airgap Bundle Notes
+==========================
+
+Bundle tag:
+Build date:
+Prepared by:
+Python: 3.11.9
+Target OS: Windows 10/11 native
+Model provider type: Custom endpoint
+Base URL format: https://.../v1
+Model name example: Qwen3.5-397B-A17B-FP8
+
+Checklist:
+[ ] Internet factory script ran successfully
+[ ] HermesAirgapBundle_<tag>.zip created
+[ ] Runner latest ZIP copied to output
+[ ] HermesSertifika.zip copied to cert
+[ ] Intranet test: hermes --version
+[ ] Intranet test: hermes model
+[ ] Intranet test: hermes chat

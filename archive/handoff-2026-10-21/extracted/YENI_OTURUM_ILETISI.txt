@@ -1,0 +1,9 @@
+Ekteki HERMES_DEVIR_NOTLARI_YENI_OTURUM_2026-10-21.md belgesini ve
+HERMES_OTURUM_DEVIR_TAM_PAKET_2026-10-21.zip arşivini incele.
+Hermes v0.22.2 Windows 10 x64 air-gap projesine kaldığımız yerden devam edeceğiz.
+Eski Hermes Auto CleanVenv kurulum deneyimi ve %LOCALAPPDATA%\hermes korunmalı.
+Son aşamada v4.6 Win10 transfer ZIP'i başarıyla üretildi; üretimde yapılan
+ilk Pilot v1 GetFullPath hata verdi. Pilot v1.1 düzeltildi ama henüz denenmedi.
+Üretimdeki Hermes'i güncellemeden v1.1 pilot sonucu ile ilerle.
+Gerekirse kodları ve eski ZIP'leri arşivden oku; olmayan 1.7GB/4GB Hermes
+çalışma paketlerini burada varmış gibi kabul etme.

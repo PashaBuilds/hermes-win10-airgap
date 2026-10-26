@@ -1,0 +1,23 @@
+HermesAirgapFactoryAuto v4.8
+
+=== MINIMAL Windows 10 Desktop bundle (recommended, v4.8) ===
+Factory PC (internet-connected). Default = newest stable Hermes release (clones it if needed):
+  cd C:\HermesAirgapFactoryAuto_v4
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ValidateFactoryScripts.ps1
+  BuildHermesDesktopWin10.bat
+      (= BuildHermesDesktopWin10.ps1 -VersionRef latest;  a fixed tag: BuildHermesDesktopWin10.bat -VersionRef v0.22.4)
+  Only re-package an already minimal win-unpacked:  BuildHermesDesktopWin10.bat -PackageOnly
+
+Output:
+  C:\H4\output\HermesAirgapBundle_<tag>_Win10_Desktop.zip  (+ .sha256)
+  Report: C:\H4\jobs\<tag>_Slim\result-desktop-win10.json
+  Log   : C:\H4\logs\desktop_win10_*.log
+
+Intranet Windows 10 PC: verify SHA256, extract to a short path (C:\H4Transfer), then:
+  InstallOrUpdateHermesAirgapped.bat Pilot              (optional isolated test, changes nothing)
+  InstallOrUpdateHermesAirgapped.bat Auto CleanVenv     (install/update, same legacy command)
+  RollbackHermesAirgapped.bat                           (undo)
+
+=== v4.6 (still available): CLI/Web/MCP-only Windows 10 package ===
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\BuildHermesAirgapBundle.ps1 -VersionRef v0.22.2 -PackageOnly -Win10Compat
+  -> C:\H4\output\HermesAirgapBundle_v0.22.2_Win10_AutoCleanVenv.zip

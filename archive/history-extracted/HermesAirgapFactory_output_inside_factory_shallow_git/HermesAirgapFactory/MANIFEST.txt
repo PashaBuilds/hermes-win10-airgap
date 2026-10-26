@@ -1,0 +1,10 @@
+Copied/embedded artifacts:
+- hermes_latest_flexible_airgap_factory.zip -> factory/hermes_latest_flexible_airgap_factory.zip
+- hermes_airgap_runner_latest.zip -> output/HermesRunner_latest.zip
+- hermes_airgap_runner_latest_fixed.zip -> output/HermesRunner_latest_fixed.zip
+- hermes_company_cert_installer.zip -> cert/HermesSertifika.zip
+- extracted hermes_latest_flexible_airgap_factory.zip -> factory/hermes_latest_flexible_airgap_factory/
+- extracted hermes_company_cert_installer.zip -> cert/
+
+Missing optional artifacts:
+- none
