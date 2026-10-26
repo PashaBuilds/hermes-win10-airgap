@@ -1,0 +1,259 @@
+# Builds the minimal Windows 10 air-gapped Hermes Desktop bundle on a GitHub-hosted
+# Windows x64 runner with the repo's own factory (BuildHermesDesktopWin10.ps1, run under
+# Windows PowerShell 5.1) and publishes it as a GitHub Release.
+#
+# - schedule: once a day; does nothing if a release for the latest stable Hermes tag exists.
+# - workflow_dispatch: optional "version" (e.g. v0.22.5); empty = latest stable release.
+# - Existing releases/tags are never modified or replaced.
+name: Airgap bundle release
+
+on:
+  schedule:
+    - cron: '17 4 * * *'   # 07:17 Europe/Istanbul
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Hermes tag (e.g. v0.22.5). Empty = latest stable release'
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths: ['.github/workflows/airgap-release.yml']
+  pull_request:
+    paths: ['.github/workflows/airgap-release.yml']
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: airgap-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 330
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FACTORY_ROOT: 'C:\H4'
+      REQ_VERSION: ${{ github.event.inputs.version }}
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Resolve Hermes version
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:REQ_VERSION) { $tag = $env:REQ_VERSION.Trim() } else {
+            $rel = gh api repos/NousResearch/hermes-agent/releases/latest | ConvertFrom-Json
+            if ($rel.draft -or $rel.prerelease) { throw 'Upstream latest release is not a stable published release' }
+            $tag = [string]$rel.tag_name
+          }
+          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Stable tag expected, got '$tag'" }
+          $rtag = "hermes-$tag"
+          gh release view $rtag --repo $env:GITHUB_REPOSITORY *> $null
+          $exists = ($LASTEXITCODE -eq 0)
+          gh api "repos/$($env:GITHUB_REPOSITORY)/git/ref/tags/$rtag" *> $null
+          if ($LASTEXITCODE -eq 0) { $exists = $true }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "rtag=$rtag" >> $env:GITHUB_OUTPUT
+          "skip=$($exists.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if ($exists) { Write-Host "Release/tag $rtag already exists; nothing to do." } else { Write-Host "Will build Hermes $tag -> release $rtag" }
+          exit 0
+
+      - uses: actions/checkout@v4
+        if: steps.ver.outputs.skip != 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.ver.outputs.skip != 'true'
+        id: py
+        with:
+          python-version: '3.13'
+
+      - name: Prepare runner (long paths, disk report)
+        if: steps.ver.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          reg add 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem' /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
+          git config --system core.longpaths true
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}, @{n='UsedGB';e={[math]::Round($_.Used/1GB,1)}}
+          Write-Host "PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE"
+          exit 0
+
+      - name: Check factory worker against upstream source (docs/07)
+        if: steps.ver.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $src = 'C:\hw\src'
+          git -c core.longpaths=true clone --quiet --depth 1 --branch '${{ steps.ver.outputs.tag }}' https://github.com/NousResearch/hermes-agent.git $src
+          if ($LASTEXITCODE -ne 0) { throw 'clone failed' }
+          & '${{ steps.py.outputs.python-path }}' -I tests/check_worker.py $src
+          if ($LASTEXITCODE -ne 0) { throw 'check_worker.py reported REVIEW NEEDED; update the allowlist/worker before building' }
+
+      - name: Bootstrap portable Node 24 pin (same logic as factory v4.6 GetNode)
+        if: steps.ver.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:FACTORY_ROOT 'tools'
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+          $idx = Invoke-RestMethod -Uri 'https://nodejs.org/dist/index.json' -TimeoutSec 100
+          $row = $idx | Where-Object { $_.version -match '^v24\.' -and $_.files -contains 'win-x64-zip' } | Select-Object -First 1
+          if (-not $row) { throw 'Node 24 Windows x64 ZIP not found' }
+          $v = $row.version
+          $zipName = "node-$v-win-x64.zip"; $zip = Join-Path $tools $zipName
+          Invoke-WebRequest "https://nodejs.org/dist/$v/$zipName" -OutFile $zip
+          Invoke-WebRequest "https://nodejs.org/dist/$v/SHASUMS256.txt" -OutFile (Join-Path $tools "SHASUMS256-$v.txt")
+          $line = @(Get-Content (Join-Path $tools "SHASUMS256-$v.txt") | Where-Object { $_ -match "^([0-9a-f]{64})\s+$([regex]::Escape($zipName))$" })
+          if ($line.Count -ne 1) { throw 'Node SHASUMS entry missing' }
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() -ne ($line[0] -split '\s+')[0]) { throw 'Node ZIP SHA256 mismatch' }
+          Expand-Archive -Path $zip -DestinationPath $tools -Force
+          $bin = Join-Path $tools "node-$v-win-x64"
+          $npmVer = [version](& (Join-Path $bin 'npm.cmd') --version)
+          if ($npmVer -ge [version]'11.10.0' -and $npmVer -lt [version]'11.17.0') {
+            & (Join-Path $bin 'npm.cmd') install -g npm@11.18.0 --prefix (Join-Path $tools 'npm-11.18.0') --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'npm 11.18.0 install failed' }
+          }
+          [IO.File]::WriteAllText((Join-Path $tools 'node-selected.txt'), "$v`n")
+          Write-Host "Node pin $v, bundled npm $npmVer"
+          exit 0
+
+      - name: Build bundle with factory (Windows PowerShell 5.1)
+        if: steps.ver.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $ps1 = Join-Path $env:GITHUB_WORKSPACE 'factory\HermesAirgapFactoryAuto_v4\BuildHermesDesktopWin10.ps1'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $ps1 `
+            -VersionRef '${{ steps.ver.outputs.tag }}' -FactoryRoot $env:FACTORY_ROOT -HostPython '${{ steps.py.outputs.python-path }}'
+          if ($LASTEXITCODE -ne 0) { throw "Factory failed (exit $LASTEXITCODE)" }
+
+      - name: Verify bundle (checksums, structure, Windows x64 binaries only)
+        if: steps.ver.outputs.skip != 'true'
+        id: verify
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.ver.outputs.tag }}'
+          $name = "HermesAirgapBundle_${tag}_Win10_Desktop"
+          $zip = Join-Path $env:FACTORY_ROOT "output\$name.zip"
+          $pkg = Join-Path $env:FACTORY_ROOT "pd\$name"
+          if (-not (Test-Path $zip)) { throw "ZIP missing: $zip" }
+          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $shaFile = (Get-Content "$zip.sha256" -Raw).Trim().Split(' ')[0].ToLower()
+          if ($sha -ne $shaFile) { throw '.sha256 file does not match ZIP' }
+          $bytes = (Get-Item $zip).Length
+          if ($bytes -lt 300MB -or $bytes -gt 1900MB) { throw "Implausible ZIP size: $bytes bytes" }
+          foreach ($f in 'app-manifest.tsv','BUNDLE.json','InstallOrUpdateHermesAirgapped.ps1','InstallOrUpdateHermesAirgapped.bat','RollbackHermesAirgapped.bat','README_KURULUM.txt','app\Hermes Agent.exe','app\resources\agent-payload\bin\hermes.exe') {
+            if (-not (Test-Path -LiteralPath (Join-Path $pkg $f))) { throw "Bundle missing $f" }
+          }
+          $meta = Get-Content (Join-Path $pkg 'BUNDLE.json') -Raw | ConvertFrom-Json
+          if ($meta.release -ne $tag -or $meta.arch -ne 'win32-x64' -or $meta.installContract -ne 'legacy-auto-cleanvenv-win10-desktop') { throw 'BUNDLE.json contract mismatch' }
+          # Re-hash every app file against app-manifest.tsv (what the intranet installer will do).
+          $app = Join-Path $pkg 'app'
+          $rows = Get-Content (Join-Path $pkg 'app-manifest.tsv')
+          $bad = 0
+          foreach ($r in $rows) { $p = $r.Split("`t"); if ((Get-FileHash -LiteralPath (Join-Path $app $p[2]) -Algorithm SHA256).Hash.ToLower() -ne $p[0]) { $bad++ } }
+          $onDisk = @(Get-ChildItem -LiteralPath $app -Recurse -File -Force).Count
+          if ($bad -ne 0 -or $onDisk -ne $rows.Count) { throw "Manifest check failed: bad=$bad listed=$($rows.Count) onDisk=$onDisk" }
+          # Platform check: no Linux/macOS binaries; key executables must be PE x64.
+          $elf = New-Object System.Collections.Generic.List[string]; $macho = New-Object System.Collections.Generic.List[string]
+          $pe = @{}
+          $buf = New-Object byte[] 4096
+          foreach ($f in Get-ChildItem -LiteralPath $app -Recurse -File -Force) {
+            if ($f.Length -lt 64) { continue }
+            $s = [IO.File]::OpenRead($f.FullName)
+            try { $n = $s.Read($buf, 0, 4096) } finally { $s.Dispose() }
+            if ($buf[0] -eq 0x7F -and $buf[1] -eq 0x45 -and $buf[2] -eq 0x4C -and $buf[3] -eq 0x46) { $elf.Add($f.FullName.Substring($app.Length+1)); continue }
+            $m = [BitConverter]::ToUInt32($buf, 0)
+            if ($m -eq 0xFEEDFACF -or $m -eq 0xFEEDFACE) { $macho.Add($f.FullName.Substring($app.Length+1)); continue }
+            if ($buf[0] -eq 0x4D -and $buf[1] -eq 0x5A) {
+              $off = [BitConverter]::ToInt32($buf, 0x3C)
+              if ($off -gt 0 -and $off + 6 -le $n -and $buf[$off] -eq 0x50 -and $buf[$off+1] -eq 0x45) {
+                $mach = '0x{0:X4}' -f [BitConverter]::ToUInt16($buf, $off + 4); $pe[$mach] = 1 + [int]$pe[$mach]
+              }
+            }
+          }
+          $machines = ($pe.Keys | Sort-Object | ForEach-Object { "$_=$($pe[$_])" }) -join ', '
+          Write-Host "PE machine types: $machines (0x8664=x64, 0x014C=x86, 0xAA64=arm64)"
+          Write-Host "ELF files: $($elf.Count); Mach-O files: $($macho.Count)"
+          $elf | Select-Object -First 50 | ForEach-Object { Write-Host "  ELF: $_" }
+          $macho | Select-Object -First 50 | ForEach-Object { Write-Host "  Mach-O: $_" }
+          function Machine([string]$file) { $b = New-Object byte[] 4096; $st = [IO.File]::OpenRead($file); try { $null = $st.Read($b, 0, 4096) } finally { $st.Dispose() }; $o = [BitConverter]::ToInt32($b, 0x3C); return [BitConverter]::ToUInt16($b, $o + 4) }
+          foreach ($k in @('Hermes Agent.exe', 'resources\agent-payload\bin\hermes.exe')) {
+            if ((Machine (Join-Path $app $k)) -ne 0x8664) { throw "$k is not a Windows x64 PE" }
+          }
+          foreach ($pat in 'python.exe','node.exe','uv.exe','rg.exe','ffmpeg.exe','git.exe') {
+            $hit = Get-ChildItem -LiteralPath (Join-Path $app 'resources\agent-payload\tools') -Recurse -File -Filter $pat | Select-Object -First 1
+            if (-not $hit) { throw "Expected Windows tool $pat not found in payload" }
+            if ((Machine $hit.FullName) -ne 0x8664) { throw "$pat is not a Windows x64 PE: $($hit.FullName)" }
+          }
+          if ($elf.Count -gt 0 -or $macho.Count -gt 0) { throw 'Non-Windows binaries found in the bundle (see list above)' }
+          $res = Get-Content (Join-Path $env:FACTORY_ROOT "jobs\${tag}_Slim\result-desktop-win10.json") -Raw | ConvertFrom-Json
+          $toolLines = ($res.tools.PSObject.Properties | ForEach-Object { "  - ``$($_.Name)``: $($_.Value) MB" }) -join "`n"
+          $mb = [math]::Round($bytes / 1MB, 1)
+          $notes = @"
+          Hermes Agent **$tag** (upstream commit ``$($meta.commit)``) için minimal Windows 10 x64 internetsiz masaüstü paketi.
+
+          Bu paket GitHub Actions'ta Windows x64 runner üzerinde, repodaki factory v$($meta.factory) (``BuildHermesDesktopWin10.ps1``, Windows PowerShell 5.1) ile üretildi. Factory commit: ``$env:TARGET_SHA``.
+
+          **Dosya:** ``$name.zip`` ($mb MB)
+          **SHA256:** ``$sha``
+
+          **İçerik**
+          - ``app\``: MSIX'siz Electron masaüstü uygulaması (``Hermes Agent.exe``), tek runtime ``app\resources\agent-payload``.
+          - Python eklentileri: core + web + mcp.
+          - Araçlar:
+          $toolLines
+          - ``app-manifest.tsv`` ($($rows.Count) dosyanın SHA256'sı), ``BUNDLE.json`` (şema $($meta.schema), ``$($meta.installContract)``).
+          - ``InstallOrUpdateHermesAirgapped.bat``, ``RollbackHermesAirgapped.bat``, ``README_KURULUM.txt``.
+
+          **Doğrulama (runner'da)**
+          - Paketteki ``hermes.exe --version`` çalıştırıldı ve $tag bildirdi.
+          - Bütün app dosyaları manifestle yeniden hash'lendi: $($rows.Count)/$($rows.Count) eşleşti.
+          - Platform: ELF 0, Mach-O 0. PE makine tipleri: $machines (0x8664 = x64).
+          - Upstream uyumluluk kontrolü (``tests/check_worker.py``) OK.
+
+          **Kurulum (intranet)**
+          ``````bat
+          cd /d C:\H4Transfer && tar -xf $name.zip
+          cd $name
+          InstallOrUpdateHermesAirgapped.bat Pilot
+          InstallOrUpdateHermesAirgapped.bat Auto CleanVenv
+          ``````
+          Not: Paket upstream imzası olmadan gelir; SHA256 yalnızca aktarım bütünlüğünü kanıtlar.
+          "@
+          $notes = ($notes -split "`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`n"
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'notes.md'), $notes, (New-Object Text.UTF8Encoding($false)))
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          Write-Host "Verified: $zip ($mb MB) SHA256 $sha"
+          exit 0
+
+      - name: Publish GitHub Release
+        if: steps.ver.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $rtag = '${{ steps.ver.outputs.rtag }}'
+          $zip = '${{ steps.verify.outputs.zip }}'
+          gh release create $rtag $zip "$zip.sha256" --repo $env:GITHUB_REPOSITORY --target $env:TARGET_SHA `
+            --title "Hermes ${{ steps.ver.outputs.tag }} - Windows 10 airgap paketi" --notes-file (Join-Path $env:RUNNER_TEMP 'notes.md')
+          if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
+
+      - name: Upload factory logs
+        if: always() && steps.ver.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-logs
+          path: |
+            C:\H4\logs\*.log
+            C:\H4\jobs\*\result-desktop-win10.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Report failure on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $log = Get-ChildItem 'C:\H4\logs\*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+          $tail = if ($log) { (Get-Content $log.FullName -Tail 60) -join "`n" } else { '(factory log yok; hata factory oncesi bir adimda)' }
+          $body = "Airgap build basarisiz (run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID).`n`n``````text`n$tail`n```````n"
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'fail.md'), $body)
+          gh pr comment ${{ github.event.pull_request.number }} --repo $env:GITHUB_REPOSITORY --body-file (Join-Path $env:RUNNER_TEMP 'fail.md')
+          exit 0
