@@ -4,7 +4,9 @@
 #
 # - schedule: once a day; does nothing if a release for the latest stable Hermes tag exists.
 # - workflow_dispatch: optional "version" (e.g. v0.22.5); empty = latest stable release.
-# - Existing releases/tags are never modified or replaced.
+# - Existing releases/tags are never modified or replaced (release-notes.yml only rewrites the
+#   Turkish notes block and the SURUM-NOTLARI asset of an existing release).
+# - Release body starts with a Turkish summary vs the previous version: .github/scripts/release_notes.py.
 name: Airgap bundle release
 
 on:
@@ -226,14 +228,39 @@ jobs:
           Write-Host "Verified: $zip ($mb MB) SHA256 $sha"
           exit 0
 
+      # Turkish "what's new vs previous version" notes (release-notes/<tag>.md, optional LLM, or
+      # fallback to upstream notes). Never blocks the release: on any failure Publish uses notes.md.
+      - name: Turkish release notes (SURUM-NOTLARI)
+        if: steps.ver.outputs.skip != 'true'
+        id: trnotes
+        continue-on-error: true
+        shell: pwsh
+        env:
+          NOTES_LLM_API_KEY: ${{ secrets.NOTES_LLM_API_KEY }}
+          NOTES_LLM_BASE_URL: ${{ vars.NOTES_LLM_BASE_URL }}
+          NOTES_LLM_MODEL: ${{ vars.NOTES_LLM_MODEL }}
+          PYTHONUTF8: '1'
+        run: |
+          $tag = '${{ steps.ver.outputs.tag }}'
+          & '${{ steps.py.outputs.python-path }}' .github/scripts/release_notes.py --tag $tag `
+            --package-notes (Join-Path $env:RUNNER_TEMP 'notes.md') `
+            --out-summary (Join-Path $env:RUNNER_TEMP "SURUM-NOTLARI-$tag.md") --out-body (Join-Path $env:RUNNER_TEMP 'body.md')
+          exit 0
+
       - name: Publish GitHub Release
         if: steps.ver.outputs.skip != 'true'
         shell: pwsh
         run: |
           $rtag = '${{ steps.ver.outputs.rtag }}'
+          $tag = '${{ steps.ver.outputs.tag }}'
           $zip = '${{ steps.verify.outputs.zip }}'
-          gh release create $rtag $zip "$zip.sha256" --repo $env:GITHUB_REPOSITORY --target $env:TARGET_SHA `
-            --title "Hermes ${{ steps.ver.outputs.tag }} - Windows 10 airgap paketi" --notes-file (Join-Path $env:RUNNER_TEMP 'notes.md')
+          $body = Join-Path $env:RUNNER_TEMP 'body.md'
+          if (-not (Test-Path $body)) { Write-Host 'Turkish notes missing; publishing package notes only.'; $body = Join-Path $env:RUNNER_TEMP 'notes.md' }
+          $assets = @($zip, "$zip.sha256")
+          $sum = Join-Path $env:RUNNER_TEMP "SURUM-NOTLARI-$tag.md"
+          if (Test-Path $sum) { $assets += $sum }
+          gh release create $rtag @assets --repo $env:GITHUB_REPOSITORY --target $env:TARGET_SHA `
+            --title "Hermes $tag - Windows 10 airgap paketi" --notes-file $body
           if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
 
       - name: Upload factory logs

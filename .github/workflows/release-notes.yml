@@ -1,0 +1,59 @@
+# Regenerates only the Turkish "bu sürümde neler var?" block of an existing airgap release and
+# its SURUM-NOTLARI-<tag>.md asset. Does not build, upload or delete the zip; the package part
+# of the release body is kept as is. Use after editing release-notes/<tag>.md or the script.
+name: Release notes (Turkish summary only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Hermes tag of an existing airgap release (e.g. v0.22.5)'
+        required: true
+      dry_run:
+        description: 'Only generate and show; do not edit the release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: airgap-release
+  cancel-in-progress: false
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read current release body
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Stable tag expected, got '$TAG'"; exit 1; }
+          gh release view "hermes-$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > "$RUNNER_TEMP/current.md"
+          wc -c "$RUNNER_TEMP/current.md"
+
+      - name: Generate Turkish notes
+        id: gen
+        env:
+          NOTES_LLM_API_KEY: ${{ secrets.NOTES_LLM_API_KEY }}
+          NOTES_LLM_BASE_URL: ${{ vars.NOTES_LLM_BASE_URL }}
+          NOTES_LLM_MODEL: ${{ vars.NOTES_LLM_MODEL }}
+        run: |
+          python3 .github/scripts/release_notes.py --tag "$TAG" --package-notes "$RUNNER_TEMP/current.md" \
+            --out-summary "$RUNNER_TEMP/SURUM-NOTLARI-$TAG.md" --out-body "$RUNNER_TEMP/body.md"
+          test -s "$RUNNER_TEMP/body.md"
+          cat "$RUNNER_TEMP/SURUM-NOTLARI-$TAG.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update release (body + SURUM-NOTLARI asset only)
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          set -euo pipefail
+          gh release edit "hermes-$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/body.md"
+          gh release upload "hermes-$TAG" "$RUNNER_TEMP/SURUM-NOTLARI-$TAG.md" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "hermes-$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[]|"\(.name) \(.size)"'

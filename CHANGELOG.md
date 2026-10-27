@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## Release notları — 2026-10-27
+- **Türkçe sürüm özeti:** Her airgap release'inin açıklaması artık o Hermes sürümünde bir önceki sürüme göre gelenleri anlatan Türkçe bir özetle başlıyor; aynı metin `SURUM-NOTLARI-<sürüm>.md` olarak release'e ekleniyor (`.github/scripts/release_notes.py`, ayrıntı: `release-notes/README.md`).
+- **Yeni workflow:** `release-notes.yml` zip'e dokunmadan var olan bir release'in yalnızca özetini yeniliyor.
+
 ## Factory v4.8.1 — 2026-10-23 (güncel)
 - **Düzeltme:** ASCII dışı dosya adı kontrolünde `-notmatch` yerine `-cnotmatch` kullanılıyor. Windows PowerShell 5.1, tr-TR yerel ayarda `I` harfini `ı` yaptığı için `LICENSE.electron.txt` yanlışlıkla reddediliyordu.
 - **Gözlem:** desktop.py `--win msix` verdiği için MSIX yan ürün olarak oluşuyor. Pakete girmiyor; yorumlar buna göre düzeltildi.
