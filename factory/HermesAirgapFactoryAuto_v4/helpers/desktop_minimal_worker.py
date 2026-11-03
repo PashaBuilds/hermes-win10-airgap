@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 # Keep in sync with BuildHermesDesktopWin10.ps1 ($ToolAllowlist).
-ALLOWLIST = ("python", "uv", "node", "npm", "ffmpeg", "ripgrep", "git", "chromium", "agent-browser")
+ALLOWLIST = ("python", "uv", "node", "npm", "ffmpeg", "ripgrep", "git", "chromium")  # agent-browser removed upstream in v0.22.6 (browser_exec + Chromium)
 # Never allowed to be dropped: required (optional=False) runtime roots on win32.
 REQUIRED = ("python", "uv", "node", "npm", "ffmpeg", "ripgrep")
 

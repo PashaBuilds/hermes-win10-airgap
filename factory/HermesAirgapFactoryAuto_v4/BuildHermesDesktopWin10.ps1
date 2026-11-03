@@ -31,7 +31,7 @@ $ProgressPreference = 'SilentlyContinue'
 $FactoryVersion = '4.8.1'
 $ExeName = 'Hermes Agent.exe'
 # Keep in sync with helpers\desktop_minimal_worker.py (ALLOWLIST).
-$ToolAllowlist = @('python', 'uv', 'node', 'npm', 'ffmpeg', 'ripgrep', 'git', 'chromium', 'agent-browser')
+$ToolAllowlist = @('python', 'uv', 'node', 'npm', 'ffmpeg', 'ripgrep', 'git', 'chromium')
 $ToolForbidden = @('llamacpp-', 'cua-driver', 'gh-', 'bws-', 'whispercpp', 'iron-proxy')
 
 function Say([string]$s) { Write-Host "[H4.8] $s" }
