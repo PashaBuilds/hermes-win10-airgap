@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## Kurulum Asistanı v1.0.0 — 2026-11-26
+- **Yeni:** `installer-app/` altına `HermesKurulumAsistani.exe` eklendi. İntranet PC için Türkçe, pencereli kurulum ve güncelleme sihirbazı. Adımları: paket ve SHA256 kontrolü, ZIP'i açma, paketin kendi `InstallOrUpdateHermesAirgapped` betiğini `Auto CleanVenv` ile çalıştırma (canlı ilerleme ve kayıt dosyasıyla), şirket sertifikasının kurulması (kullanıcı düzeyinde ortam değişkenleri, CA paketi ve isteğe bağlı CurrentUser deposu; yönetici yetkisi gerekmez), isteğe bağlı `hermes model` → Custom endpoint ayarı (Hermes'in kendi koduyla), özet ekranı ve geri alma.
+- **Yeni workflow:** `installer-app.yml` exe'yi Windows'ta derler, test eder, açılış testinden geçirir ve artifact olarak yükler. Airgap paket release'lerine dokunmaz.
+
 ## Release notları — 2026-10-27
 - **Türkçe sürüm özeti:** Her airgap release'inin açıklaması artık o Hermes sürümünde bir önceki sürüme göre gelenleri anlatan Türkçe bir özetle başlıyor; aynı metin `SURUM-NOTLARI-<sürüm>.md` olarak release'e ekleniyor (`.github/scripts/release_notes.py`, ayrıntı: `release-notes/README.md`).
 - **Yeni workflow:** `release-notes.yml` zip'e dokunmadan var olan bir release'in yalnızca özetini yeniliyor.

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- .NET Framework 4.8 WPF: ships with Windows 10 (1903+, incl. LTSC 2021 / 19044) and Windows 11,
+       so the single exe needs NO runtime install on the offline target. Builds on Windows or Linux
+       (EnableWindowsTargeting + reference-assembly package). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>HermesKurulumAsistani</AssemblyName>
+    <RootNamespace>HermesKurulum</RootNamespace>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Hermes Kurulum Asistani</Product>
+    <Description>Hermes Agent internetsiz (airgap) kurulum, guncelleme, sertifika ve model ayari</Description>
+    <Company>PashaBuilds/hermes-win10-airgap</Company>
+    <Copyright>MIT</Copyright>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>embedded</DebugType>
+    <Deterministic>true</Deterministic>
+    <SatelliteResourceLanguages>tr</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\hermes_model_setup.py" LogicalName="HermesKurulum.Resources.hermes_model_setup.py" />
+    <Resource Include="Resources\app.ico" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+</Project>
