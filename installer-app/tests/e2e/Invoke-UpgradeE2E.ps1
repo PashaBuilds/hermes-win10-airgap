@@ -92,6 +92,18 @@ public static class E2EWin {
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder sb, int n);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+  // "Security Warning" prompt (MessageBox-style #32770) -> WM_COMMAND IDYES
+  public static bool ClickYes(int procId) {
+    bool done = false;
+    EnumWindows((h, l) => { if (!IsWindowVisible(h)) return true; uint pid; GetWindowThreadProcessId(h, out pid);
+      if (pid != (uint)procId) return true;
+      var c = new StringBuilder(64); GetClassName(h, c, 64); var t = new StringBuilder(256); GetWindowText(h, t, 256);
+      if (c.ToString() == "#32770" && (t.ToString().Contains("Security Warning") || t.ToString().Contains("G\u00fcvenlik"))) {
+        PostMessage(h, 0x0111, (IntPtr)6, IntPtr.Zero); done = true; }
+      return true; }, IntPtr.Zero);
+    return done;
+  }
   public static List<string> List() {
     var r = new List<string>();
     EnumWindows((h, l) => { if (!IsWindowVisible(h)) return true; uint pid; GetWindowThreadProcessId(h, out pid);
@@ -109,6 +121,14 @@ function Dump-Windows {
 # Clicks "Yes" on the Windows "Security Warning" prompt that adding a root CA to CurrentUser\Root shows.
 $script:certPromptAccepted = $false
 function Accept-CertPrompt {
+    # UI Automation did not see the prompt's buttons on the CI runner; Win32 IDYES works everywhere.
+    if ($app -and [E2EWin]::ClickYes($app.Id)) {
+        Shot 'windows-cert-prompt'
+        Start-Sleep -Milliseconds 300
+        $script:certPromptAccepted = $true
+        Write-Host "  (Windows certificate prompt accepted via IDYES)"
+        return
+    }
     $wins = $AE::RootElement.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
     foreach ($w in $wins) {
         $n = $w.Current.Name
