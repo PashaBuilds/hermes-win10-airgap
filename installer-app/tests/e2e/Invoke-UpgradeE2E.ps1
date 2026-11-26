@@ -51,6 +51,7 @@ function Hermes-Version {
     $o = & cmd.exe /c 'hermes --version 2>&1'
     return ($o | Out-String).Trim()
 }
+# Note: WPF Border/Panel elements are not in the UI Automation tree; only controls and TextBlocks are.
 function Cond($prop, $val) { New-Object System.Windows.Automation.PropertyCondition($prop, $val) }
 function El($win, [string]$id) { $win.FindFirst($TS::Descendants, (Cond $AE::AutomationIdProperty $id)) }
 function NameOf($win, [string]$id) { $e = El $win $id; if ($e) { $e.Current.Name } else { $null } }
@@ -158,7 +159,7 @@ Check 'header shows bundle new version' ($chipBundle -match [regex]::Escape($new
 Shot 'package-page'
 Click $win 'NextBtn'
 
-Wait-For { (El $win 'CertInfoPanel') -and (El $win 'NextBtn').Current.IsEnabled } 30 'certificate page ready' | Out-Null
+Wait-For { ((NameOf $win 'CertStatus') -match '^(✓|✕)') -and (El $win 'NextBtn').Current.IsEnabled } 30 'certificate page ready' | Out-Null
 $certStatus = NameOf $win 'CertStatus'
 Write-Host "  cert status: $certStatus"
 Check 'certificate accepted by the assistant' ($certStatus -match '^✓')
@@ -169,7 +170,7 @@ Step 'Running install (watching progress, accepting the Windows certificate prom
 $midShot = $false
 Wait-For {
     $n = El $win 'NextBtn'
-    $n -and $n.Current.IsEnabled -and ((El $win 'RunErrorPanel') -or $n.Current.Name -match 'Model|Özet')
+    $n -and $n.Current.IsEnabled -and ((El $win 'RunErrorText') -or $n.Current.Name -match 'Model|Özet')
 } 3600 'install finished' {
     Accept-CertPrompt
     if (-not $midShot) {
@@ -178,7 +179,7 @@ Wait-For {
     }
 } | Out-Null
 Shot 'install-finished'
-$runError = El $win 'RunErrorPanel'
+$runError = El $win 'RunErrorText'   # Borders have no UIA peer; the TextBlock inside is visible only on error
 Check 'install finished without error panel' (-not $runError) $(if ($runError) { NameOf $win 'RunErrorText' })
 Check 'overall progress 100%' ((NameOf $win 'OverallPercent') -eq '100%') (NameOf $win 'OverallPercent')
 Check 'Windows certificate prompt appeared and was accepted' $script:certPromptAccepted
