@@ -285,7 +285,7 @@
                                     </StackPanel>
                                     <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,0,12">
                                         <TextBlock Text="Model" Style="{StaticResource Label}"/>
-                                        <ComboBox x:Name="ModelCombo" IsEditable="True"/>
+                                        <ComboBox x:Name="ModelCombo" IsEditable="True" TextBoxBase.TextChanged="ModelCombo_Changed" SelectionChanged="ModelCombo_Changed"/>
                                     </StackPanel>
                                     <StackPanel Grid.Row="2" Grid.Column="2" Margin="0,0,0,12">
                                         <TextBlock Text="API uyumluluk modu" Style="{StaticResource Label}"/>

@@ -50,10 +50,26 @@ namespace HermesKurulum
 
         public static string AppVersion => Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
 
+        /// <summary>Small screens / high scaling (e.g. 1024x768 or 125% on a laptop): never open larger than the
+        /// work area; maximise if even the minimum size does not fit.</summary>
+        void FitToWorkArea()
+        {
+            var wa = SystemParameters.WorkArea;
+            if (wa.Width <= 0 || wa.Height <= 0) return;
+            if (wa.Width < MinWidth || wa.Height < MinHeight)
+            {
+                MinWidth = Math.Min(MinWidth, wa.Width); MinHeight = Math.Min(MinHeight, wa.Height);
+                WindowState = WindowState.Maximized;
+            }
+            Width = Math.Min(Width, wa.Width);
+            Height = Math.Min(Height, wa.Height);
+        }
+
         public MainWindow()
         {
             InitializeComponent();
             Title = "Hermes Kurulum Asistanı " + AppVersion;
+            FitToWorkArea();
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             _workDir = Path.Combine(local, "HermesKurulumAsistani");
             _log = new LogWriter(Path.Combine(_workDir, "logs", "kurulum_" + _stamp + ".log"), _redactor);
@@ -90,6 +106,7 @@ namespace HermesKurulum
             var cur = CertificateInstaller.DescribeCurrent(_env);
             CurrentCertText.Text = cur == null ? "Şu an ayarlı bir sertifika paketi yok." : "Şu anki ayar: SSL_CERT_FILE = " + cur;
             AutoFindBundle();
+            ApplyCommandLine();
             ShowPage(Page.Package);
         }
 
@@ -108,6 +125,21 @@ namespace HermesKurulum
                 }
             }
             catch { }
+        }
+
+        /// <summary>Optional pre-selection, e.g. for a shortcut prepared by IT or for automated tests:
+        /// HermesKurulumAsistani.exe --paket &lt;zip|klasör&gt; --sertifika &lt;.crt&gt; --klasor &lt;açılacak yer&gt;</summary>
+        void ApplyCommandLine()
+        {
+            var a = Environment.GetCommandLineArgs();
+            string Arg(string name) { int i = Array.FindIndex(a, x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
+            try
+            {
+                var dir = Arg("--klasor"); if (!string.IsNullOrWhiteSpace(dir)) ExtractPathBox.Text = dir;
+                var pkg = Arg("--paket"); if (!string.IsNullOrWhiteSpace(pkg)) LoadBundle(pkg);
+                var crt = Arg("--sertifika"); if (!string.IsNullOrWhiteSpace(crt)) LoadCert(crt);
+            }
+            catch (Exception ex) { _log.Warn("Komut satırı argümanları uygulanamadı: " + ex.Message); }
         }
 
         public void LogUnhandled(Exception ex) => _log.Error("Beklenmeyen hata: " + ex);
@@ -659,6 +691,13 @@ namespace HermesKurulum
         }
 
         void ApiKey_Changed(object sender, RoutedEventArgs e) { if (IsLoaded) UpdateButtons(); }
+
+        // Typing a model name by hand (e.g. when /v1/models is not offered) must enable "Kaydet" too.
+        // SelectionChanged fires before Text is updated, hence the deferred refresh.
+        void ModelCombo_Changed(object sender, RoutedEventArgs e)
+        {
+            if (IsLoaded) Dispatcher.BeginInvoke(new Action(UpdateButtons), System.Windows.Threading.DispatcherPriority.Background);
+        }
 
         bool ModelInputsReady()
         {

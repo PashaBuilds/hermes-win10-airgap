@@ -1,5 +1,11 @@
-"""Tiny OpenAI-compatible /v1/models server for helper tests. Requires Bearer test-key-123456."""
+"""Tiny OpenAI-compatible /v1/models server for helper tests. Requires Bearer test-key-123456.
+
+usage: fake_openai_server.py <port> [model,model,...]
+HTTPS when FAKE_TLS_CERT and FAKE_TLS_KEY (PEM files) are set; used by the Windows e2e test to check
+that Hermes trusts a "company" CA installed by the assistant."""
 import json
+import os
+import ssl
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -20,4 +26,9 @@ class H(BaseHTTPRequestHandler):
         self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
 
 
-HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+srv = HTTPServer(("127.0.0.1", int(sys.argv[1])), H)
+if os.environ.get("FAKE_TLS_CERT") and os.environ.get("FAKE_TLS_KEY"):
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(os.environ["FAKE_TLS_CERT"], os.environ["FAKE_TLS_KEY"])
+    srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+srv.serve_forever()

@@ -16,6 +16,8 @@ Asistan kendi başına bir şey kurmaz. **Paketin kendi kurulum betiğini** (`In
 
 Kayıt dosyası: `%LOCALAPPDATA%\HermesKurulumAsistani\logs\kurulum_<tarih>.log`. API anahtarı ne ekrana ne de bu dosyaya yazılır; anahtarın kendisi ve Hermes'in ekrana bastığı ilk 8 karakteri `****` ile maskelenir.
 
+**Komut satırından ön seçim (isteğe bağlı):** `HermesKurulumAsistani.exe --paket <zip|klasör> --sertifika <.crt> --klasor <açılacak yer>`. Örneğin BT ekibi hazır bir kısayol dağıtabilir. Exe ile aynı klasörde (ya da İndirilenler'de) bir `HermesAirgapBundle_*_Win10_Desktop.zip` varsa zaten kendiliğinden seçilir.
+
 **Yalnızca sertifika ya da model:** 1. adımdaki *Kurulum / güncellemeyi atla* kutusu işaretlenirse paket seçmeye gerek kalmaz. Sertifikayı yenilemek veya modeli değiştirmek için asistan tek başına da çalıştırılabilir.
 
 ## Sertifika nasıl kuruluyor?
@@ -70,4 +72,10 @@ Uygulama C#/WPF ile yazıldı ve hedefi .NET Framework 4.8. Çıktı tek bir exe
   - `--bundle-zip <gerçek paket>`: gerçek bir paketin okunması.
   - `--sim-zip <sim paketi> --pwsh pwsh`: `tests/sim` paketi üzerinde uçtan uca kurulum ve rollback.
   - `--hermes-src <kaynak> --hermes-python <python>`: gerçek Hermes koduna karşı model ayarı.
+- `tests/e2e/Invoke-UpgradeE2E.ps1` (CI'daki `e2e-upgrade` işi, gerçek Windows'ta, Windows PowerShell 5.1 ile çalışır):
+  1. Eski paket (varsayılan v0.23.0) kendi betiğiyle kurulur.
+  2. Asistan UI Automation ile bir kullanıcı gibi tıklanarak yeni pakete (v0.23.4) güncellenir.
+  3. Garip adlı bir test `.crt` dosyası kurulur ve Windows'un onay penceresinde "Evet"e basılır.
+  4. O sertifikayla imzalanmış HTTPS sahte model sunucusundan modeller getirilir ve kaydedilir.
+  5. Sonuç doğrulanır: `hermes --version`, korunan oturum/hafıza/.env kayıtları, `config.yaml` içindeki anahtar referansı, ortam değişkenleri, sertifika deposu ve kayıt dosyasında anahtar bulunmaması kontrol edilir. Ekran görüntüleri artifact olarak yüklenir.
 - `tests/python/test_model_helper.sh`: Model yardımcısı, sahte bir OpenAI uyumlu sunucuya karşı ve gerçek Hermes kaynağıyla test edilir (v0.23.0 ve v0.23.4). Kontrol edilenler: model listesi, yanlış anahtar teşhisi, kaydetme, yeniden kaydetme, tek model yolu ve anahtarın hiçbir çıktıda görünmemesi.
