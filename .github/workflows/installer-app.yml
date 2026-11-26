@@ -1,0 +1,116 @@
+# Builds the Windows setup assistant (installer-app/, HermesKurulumAsistani.exe) on a real Windows
+# runner, runs its unit tests, starts the exe once (UI smoke test + screenshot) and uploads it as an
+# artifact. workflow_dispatch with "release_tag" also attaches the exe (+ .sha256) to that existing
+# release. Separate from airgap-release.yml on purpose: bundle releases are not touched.
+# Job e2e-upgrade: installs the old airgap bundle (release asset) with its own script, then drives the
+# assistant through UI Automation to upgrade to the new one, install a test CA (accepting the Windows
+# prompt) and configure a model over HTTPS; see installer-app/tests/e2e/Invoke-UpgradeE2E.ps1.
+name: Kurulum asistani (installer-app)
+
+on:
+  pull_request:
+    paths: ['installer-app/**', '.github/workflows/installer-app.yml']
+  push:
+    branches: [main]
+    paths: ['installer-app/**', '.github/workflows/installer-app.yml']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to attach the exe to (e.g. kurulum-asistani-v1.0.0). Empty = artifact only'
+        required: false
+        default: ''
+      e2e_from:
+        description: 'e2e: version installed first (release hermes-<v> of this repo)'
+        required: false
+        default: 'v0.23.0'
+      e2e_to:
+        description: 'e2e: version the assistant upgrades to'
+        required: false
+        default: 'v0.23.4'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build + unit tests
+        shell: pwsh
+        run: ./installer-app/build.ps1 -Test
+      - name: UI smoke test (exe starts and stays up)
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path installer-app/dist/HermesKurulumAsistani.exe
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 12
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          try {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("$PWD/installer-app/dist/smoke.png"); $g.Dispose(); $bmp.Dispose()
+          } catch { Write-Warning "screenshot failed: $_" }
+          if ($p.HasExited) { throw "exe exited early with code $($p.ExitCode)" }
+          "window title: '$($p.MainWindowTitle)'"
+          Stop-Process -Id $p.Id -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HermesKurulumAsistani
+          path: installer-app/dist/
+      - name: Attach to release
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          gh release upload $env:TAG installer-app/dist/HermesKurulumAsistani.exe installer-app/dist/HermesKurulumAsistani.exe.sha256 --clobber --repo $env:GITHUB_REPOSITORY
+
+  e2e-upgrade:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FROM: ${{ github.event.inputs.e2e_from || 'v0.23.0' }}
+      TO: ${{ github.event.inputs.e2e_to || 'v0.23.4' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test tools
+        shell: pwsh
+        run: python -m pip install --quiet cryptography
+      - uses: actions/download-artifact@v4
+        with:
+          name: HermesKurulumAsistani
+          path: C:\e2e-bin
+      - name: Download bundles (${{ env.FROM }} -> ${{ env.TO }})
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\e2e-dl | Out-Null
+          foreach ($v in $env:FROM, $env:TO) {
+            gh release download "hermes-$v" --repo $env:GITHUB_REPOSITORY --dir C:\e2e-dl --pattern '*.zip' --pattern '*.zip.sha256'
+          }
+          Get-ChildItem C:\e2e-dl | Format-Table Name, Length
+      - name: Upgrade end-to-end through the UI
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          & .\installer-app\tests\e2e\Invoke-UpgradeE2E.ps1 -Exe C:\e2e-bin\HermesKurulumAsistani.exe `
+            -OldZip "C:\e2e-dl\HermesAirgapBundle_$($env:FROM)_Win10_Desktop.zip" `
+            -NewZip "C:\e2e-dl\HermesAirgapBundle_$($env:TO)_Win10_Desktop.zip" `
+            -Python $py -OutDir "$PWD\e2e-out"
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-upgrade-screenshots-and-logs
+          path: e2e-out/

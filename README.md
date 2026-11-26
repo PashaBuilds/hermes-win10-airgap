@@ -38,6 +38,18 @@ RollbackHermesAirgapped.bat                           &:: geri al
 ```
 Ayrıntılı adımlar: [docs/03-kurulum-rehberi.md](docs/03-kurulum-rehberi.md)
 
+**Pencereli kurulum: Hermes Kurulum Asistanı**
+
+Komut satırı yerine [`installer-app/`](installer-app) altındaki `HermesKurulumAsistani.exe` de kullanılabilir. Exe, `kurulum-asistani-v*` release'lerinde yayınlanır. Asistan şu adımları ekranda adım adım gösterir:
+
+1. ZIP'i seçer, kontrol eder ve `C:\Tools\HermesAirgapBundle` klasörüne açar.
+2. `InstallOrUpdateHermesAirgapped` betiğini `Auto CleanVenv` ile çalıştırır.
+3. Şirketin iç sitesinden indirilen `.crt` dosyasını yönetici yetkisi olmadan kurar.
+4. İsteğe bağlı olarak `hermes model` → Custom endpoint ayarını yapar.
+5. Sonunda `hermes --version` sonucunu gösterir ve dashboard, chat ya da masaüstü uygulamasını açar.
+
+Kurulum betiğinin yedek alma, doğrulama ve rollback adımları aynen geçerlidir. Ayrıntılar için [installer-app/README.md](installer-app/README.md) dosyasına bakın.
+
 ## Repo içeriği
 
 | Yol | İçerik |
@@ -45,6 +57,7 @@ Ayrıntılı adımlar: [docs/03-kurulum-rehberi.md](docs/03-kurulum-rehberi.md)
 | [`factory/HermesAirgapFactoryAuto_v4/`](factory/HermesAirgapFactoryAuto_v4) | **Güncel factory v4.8.1.** `BuildHermesDesktopWin10.ps1` minimal masaüstü paketini üretir. `helpers/desktop_minimal_worker.py` upstream'in araç ve extras seçimini değiştirir. `templates/` altında intranet installer'ı, rollback ve README var. Eski v4.6 CLI-only yolu (`BuildHermesAirgapBundle.ps1`) da duruyor. |
 | [`pilots/cli-pilot-v1.2/`](pilots/cli-pilot-v1.2) | Üretim makinesinde mevcut kuruluma dokunmadan v0.22.2 CLI'yi test eden izole pilot. |
 | [`pilots/desktop-delta-kit-v1.0/`](pilots/desktop-delta-kit-v1.0) | MSIX'siz masaüstü uygulamasının Windows 10'da çalıştığını kanıtlayan kit. Factory tarafı payload ile karşılaştırıp yalnızca farkı (265 MB) paketler; intranet tarafı uygulamayı yeniden kurar ve doğrular. |
+| [`installer-app/`](installer-app) | **Hermes Kurulum Asistanı:** intranet PC için Türkçe, pencereli kurulum ve güncelleme sihirbazı. Paket kontrolü, kurulum ilerlemesi, şirket sertifikası ve model bağlantısı adımlarını içerir. C#/WPF ile yazıldı, .NET Framework 4.8 hedefli. |
 | [`tests/`](tests) | PowerShell parser ve 5.1 sözdizimi kontrolü (`parse.ps1`). Linux üzerinde PowerShell 7 ve stub'larla çalışan simülasyon paketi (`sim/run-sim.sh`). |
 | [`docs/`](docs) | Bütün bilgi; aşağıdaki listeye bak. |
 | [`archive/handoff-2026-10-21/`](archive/handoff-2026-10-21) | Önceki oturumdan devralınan tam paket (orijinal ZIP ve açılmış hâli): devir notu, factory v3–v4.6, pilot v1/v1.1, eski installer ve runbook'lar. |

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the app's Core logic (no WPF) on .NET 8 so it can be tested on Linux CI / the build box. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>CA1416;SYSLIB0026;SYSLIB0057;SYSLIB0003</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Core/*.cs" Link="Core/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../src/Resources/hermes_model_setup.py" LogicalName="HermesKurulum.Resources.hermes_model_setup.py" />
+    <None Include="../python/fake_openai_server.py" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
