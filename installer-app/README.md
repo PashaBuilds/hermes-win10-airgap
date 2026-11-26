@@ -29,6 +29,23 @@ Hermes 0.23.x TLS doğrulamasında iki kaynağa bakar (`agent/ssl_verify.py`). B
 3. **Kullanıcı** ortam değişkenleri: `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` ve `CURL_CA_BUNDLE` bu pakete, `NODE_EXTRA_CA_CERTS` ise `company-ca.pem` dosyasına yönlendirilir. Açık pencerelere `WM_SETTINGCHANGE` gönderilir.
 4. İsteğe bağlı olarak (varsayılan: açık) sertifika **CurrentUser** deposuna da eklenir: kök sertifika *Güvenilen Kök* deposuna, ara sertifika *Ara CA* deposuna. Windows bir onay penceresi açar; **Evet** denmelidir. Bu adım başarısız olursa yalnızca uyarı verilir, çünkü 1–3 tek başına yeterlidir.
 
+### Sertifika bir kez kurulur
+
+Asistan her açılışta sertifikanın daha önce kurulup kurulmadığını kontrol eder. Bu kontrol hiçbir şeyi değiştirmez ve bir onay penceresi açmaz. Kontrol edilenler:
+
+- `company-ca.pem` dosyası okunuyor ve en az bir geçerli sertifika içeriyor mu?
+- `company-ca-bundle.pem` dosyası bu sertifikaları içeriyor mu?
+- Dört kullanıcı değişkeni doğru dosyaları gösteriyor mu?
+- Sertifika Windows kullanıcı deposunda var mı? Bu yalnızca bilgi içindir.
+
+Eski `install_hermes_company_cert.py` betiğiyle yapılmış kurulumlar da tanınır. Bu betik certifi listesinin sonuna şirket sertifikasını ekliyordu; asistan, değişkenlerin gösterdiği paketin sonundaki certifi'de olmayan sertifikaları şirket sertifikası olarak kabul eder.
+
+- **Zaten kurulu:** Sertifika sayfasında yeşil "✓ Sertifika zaten kurulu" yazısı, sertifikanın adı ve son geçerlilik tarihi görünür. "Atla" önceden seçilidir ve dosya seçmek gerekmez. Adım "Zaten kurulu" olarak geçilir ve Windows onay penceresi açılmaz. Sertifikayı değiştirmek için **Yeni sertifika seç / yeniden kur** düğmesi kullanılır. Aynı sertifika yeniden seçilirse yine "zaten kurulu" sayılır.
+- **Eksik var:** Bir değişken silinmiş, paket dosyası kaybolmuş ya da kurulum eski betikle yapılmış olabilir. Bu durumda eksikler listelenir ve mevcut sertifikadan **sessizce tamamlanır**. `.crt` dosyası tekrar istenmez, onay penceresi açılmaz.
+- **Süre:** 30 gün içinde dolacak sertifika için uyarı gösterilir. Süresi dolmuşsa yeni dosya seçmek zorunludur.
+- **Hermes güncellemesinden sonra:** Yeni sürümün `certifi` listesi değiştiyse `company-ca-bundle.pem` mevcut `company-ca.pem` dosyasından sessizce yeniden üretilir. Bunun nedeni şu: `REQUESTS_CA_BUNDLE` ayarlıyken `requests` yalnızca bu pakete güvenir. Paket eski kalırsa yeni sürümün genel kök sertifika güncellemeleri devre dışı kalır. İşlem dosya, onay ya da yönetici yetkisi gerektirmez ve önceki paketin yedeği alınır.
+- **Windows deposu:** Sertifika depoda yoksa "Windows deposuna da ekle" kutusu boş gelir. Kullanıcı işaretlemedikçe onay penceresi açılmaz.
+
 Dosyalar `HERMES_HOME` altında durduğu için güncellemelerde silinmez. Yeni bir sürümden sonra asistanı tekrar çalıştırmak, yeni runtime'ın `certifi` dosyasıyla paketi tazeler. Bu adım tekrar tekrar çalıştırılabilir.
 
 ## Güncelleme sırasında neler korunur?

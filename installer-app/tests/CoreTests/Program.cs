@@ -34,6 +34,7 @@ static class Program
             Json(); Versions(); RedactorTests(); ParserTests(); CommandTests();
             Certs(tmp);
             CertInstall(tmp, Arg(args, "--certifi"));
+            CertStatusTests(tmp);
             SyntheticZip(tmp);
             HelperResultParsing();
             var real = Arg(args, "--bundle-zip"); if (real != null) RealBundle(real, tmp);
@@ -230,6 +231,80 @@ static class Program
         var res3 = inst.Install(paths, check.Certificates, Path.Combine(tmp, "nope.pem"), false, "20261127_110000");
         Check("no certifi -> company-only bundle + warning", res3.BundleCertCount == 2 && !res3.CertifiFound && logs.Any(l => l.Contains("certifi")));
         Check("bundle parses as X.509 collection", ImportCount(paths.CompanyCaBundle) == 2);
+    }
+
+    static void CertStatusTests(string tmp)
+    {
+        Console.WriteLine("== certificate status (set up once, detect afterwards)");
+        var now = DateTime.Now;
+        var la = Path.Combine(tmp, "LA-status");
+        var paths = new HermesPaths(la, null);
+        var env = new FakeEnvironmentStore();
+        var certifi = WriteTmp(tmp, "certifi-status.pem", Pem(MakeCa("Public Root A", DateTimeOffset.Now.AddYears(-1), DateTimeOffset.Now.AddYears(5), out _)) +
+                                                          Pem(MakeCa("Public Root B", DateTimeOffset.Now.AddYears(-1), DateTimeOffset.Now.AddYears(5), out _)));
+        var company = CertificateTools.Inspect(WriteTmp(tmp, "company-status.crt", Pem(s_root)), now).Certificates;
+        Func<CertInfo, bool> storeHas = c => true, storeMissing = c => false;
+
+        var st = CertificateStatus.Detect(paths, env, certifi, null, now);
+        Check("nothing set up -> NotInstalled", st.State == CertState.NotInstalled && st.Certificates.Count == 0);
+
+        var inst = new CertificateInstaller(env, _ => { });
+        inst.Install(paths, company, certifi, false, "s1");
+        st = CertificateStatus.Detect(paths, env, certifi, storeHas, now);
+        Check("after install -> Installed, nothing missing, no refresh", st.State == CertState.Installed && st.Missing.Count == 0 && !st.NeedsBundleRefresh && !st.NeedsAction, string.Join("; ", st.Missing));
+        Check("installed cert identified (subject + expiry)", st.Certificates.Count == 1 && st.Certificates[0].Cert.Thumbprint == s_root.Thumbprint && st.EarliestExpiry != null);
+        Check("store present -> nothing to add", st.StoreChecked && st.NotInStore.Count == 0);
+        st = CertificateStatus.Detect(paths, env, certifi, storeMissing, now);
+        Check("store missing is informational only (still Installed)", st.State == CertState.Installed && st.NotInStore.Count == 1);
+
+        // Hermes update with a different certifi -> silent refresh, still installed
+        var certifi2 = WriteTmp(tmp, "certifi-status2.pem", File.ReadAllText(certifi) + Pem(MakeCa("Public Root C", DateTimeOffset.Now.AddYears(-1), DateTimeOffset.Now.AddYears(5), out _)));
+        st = CertificateStatus.Detect(paths, env, certifi2, null, now);
+        Check("new certifi -> Installed + NeedsBundleRefresh", st.State == CertState.Installed && st.NeedsBundleRefresh);
+        inst.Install(paths, st.Certificates, certifi2, false, "s2");
+        st = CertificateStatus.Detect(paths, env, certifi2, null, now);
+        Check("refresh from existing company-ca.pem -> clean again", st.State == CertState.Installed && !st.NeedsBundleRefresh);
+
+        // Partial: a variable removed, bundle deleted -> repair list, still from company-ca.pem
+        env.Values.Remove("NODE_EXTRA_CA_CERTS");
+        env.Values["CURL_CA_BUNDLE"] = @"C:\baska\dosya.pem";
+        st = CertificateStatus.Detect(paths, env, certifi2, null, now);
+        Check("missing/wrong env vars -> Partial with 2 items", st.State == CertState.Partial && st.Missing.Count == 2 && st.Missing.Any(m => m.Contains("NODE_EXTRA_CA_CERTS")) && st.Missing.Any(m => m.Contains("CURL_CA_BUNDLE")), string.Join("; ", st.Missing));
+        File.Delete(paths.CompanyCaBundle);
+        st = CertificateStatus.Detect(paths, env, certifi2, null, now);
+        Check("bundle deleted -> Partial, certs still known", st.State == CertState.Partial && st.Certificates.Count == 1 && st.Missing.Any(m => m.Contains("company-ca-bundle.pem")));
+        inst.Install(paths, st.Certificates, certifi2, false, "s3");
+        st = CertificateStatus.Detect(paths, env, certifi2, null, now);
+        Check("repair without the .crt -> Installed", st.State == CertState.Installed && st.Missing.Count == 0, string.Join("; ", st.Missing));
+
+        // Expiry
+        st = CertificateStatus.Detect(paths, env, certifi2, null, s_root.NotAfter.AddDays(-10));
+        Check("expires within 30 days -> warning, still Installed", st.State == CertState.Installed && st.ExpiresSoon);
+        st = CertificateStatus.Detect(paths, env, certifi2, null, s_root.NotAfter.AddDays(1));
+        Check("expired -> Expired (new file required)", st.State == CertState.Expired && st.AnyExpired);
+
+        // Legacy: old script = certifi + company cert appended, env vars -> that bundle, no company-ca.pem
+        var la2 = Path.Combine(tmp, "LA-legacy");
+        var paths2 = new HermesPaths(la2, null);
+        Directory.CreateDirectory(paths2.HermesHome);
+        File.WriteAllText(paths2.CompanyCaBundle, File.ReadAllText(certifi) + "\n" + Pem(s_root));
+        var env2 = new FakeEnvironmentStore();
+        foreach (var v in new[] { "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS" }) env2.Values[v] = paths2.CompanyCaBundle;
+        st = CertificateStatus.Detect(paths2, env2, certifi2, null, now);   // newer certifi than the one in the legacy bundle
+        Check("legacy setup detected (company cert = trailing non-certifi cert)", st.Legacy && st.Certificates.Count == 1 && st.Certificates[0].Cert.Thumbprint == s_root.Thumbprint);
+        Check("legacy -> Partial: company-ca.pem + NODE var to create, nothing else", st.State == CertState.Partial && st.Missing.Count == 2, string.Join("; ", st.Missing));
+        new CertificateInstaller(env2, _ => { }).Install(paths2, st.Certificates, certifi2, false, "l1");
+        st = CertificateStatus.Detect(paths2, env2, certifi2, null, now);
+        Check("legacy repaired silently -> Installed", st.State == CertState.Installed && !st.Legacy);
+        // A pure certifi bundle (no company cert) is not mistaken for a company setup
+        var env3 = new FakeEnvironmentStore(); env3.Values["SSL_CERT_FILE"] = certifi;
+        Check("plain certifi bundle -> NotInstalled", CertificateStatus.Detect(new HermesPaths(Path.Combine(tmp, "LA-none"), null), env3, certifi2, null, now).State == CertState.NotInstalled);
+        // A root that certifi removed in the middle of an old bundle is NOT taken as a company cert
+        var removed = MakeCa("Removed Public Root", DateTimeOffset.Now.AddYears(-1), DateTimeOffset.Now.AddYears(5), out _);
+        var oldBundle = Pem(removed) + File.ReadAllText(certifi) + Pem(s_root);
+        var thumbs = new HashSet<string>(CertificateStatus.ParsePem(File.ReadAllText(certifi)).Select(c => c.Thumbprint), StringComparer.OrdinalIgnoreCase);
+        var leg = CertificateStatus.LegacyCompanyCerts(oldBundle, thumbs);
+        Check("legacy: only trailing certs count (removed public roots ignored)", leg.Count == 1 && leg[0].Thumbprint == s_root.Thumbprint);
     }
 
     static int ImportCount(string pemPath)

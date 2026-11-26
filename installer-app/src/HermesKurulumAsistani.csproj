@@ -16,7 +16,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <FileVersion>1.0.0.0</FileVersion>
     <Product>Hermes Kurulum Asistani</Product>
     <Description>Hermes Agent internetsiz (airgap) kurulum, guncelleme, sertifika ve model ayari</Description>

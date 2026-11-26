@@ -303,5 +303,56 @@ $bundleText = Get-Content -Raw $ssl
 $count = ([regex]::Matches($bundleText, 'BEGIN CERTIFICATE')).Count
 Write-Host "  CA bundle certificates: $count"
 
+# ---------------------------------------------------------------- 5. second run: certificate already installed
+Step 'Second run: certificate is already set up -> detected, skipped, no Windows prompt, no .crt needed'
+$rootBefore = @(Get-ChildItem Cert:\CurrentUser\Root).Count
+$backupsBefore = @(Get-ChildItem $hh -Filter 'company-ca-bundle_backup_*.pem' -ErrorAction SilentlyContinue).Count
+$app = Start-Process -FilePath $appExe -PassThru     # no --sertifika this time
+$win = Wait-For { $AE::RootElement.FindFirst($TS::Children, (Cond $AE::ProcessIdProperty $app.Id)) } 60 'main window (2nd run)'
+Wait-For { $e = El $win 'NextBtn'; $e -and $e.Current.IsEnabled } 120 'package page ready (2nd run)' | Out-Null
+$skip = El $win 'SkipInstallCheck'
+$stp = $skip.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+if ($stp.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) { $stp.Toggle() }
+Click $win 'NextBtn'
+$existing = Wait-For { $t = NameOf $win 'ExistingCertTitle'; if ($t) { $t } } 30 'already-installed panel'
+Shot 'second-run-cert-page'
+Write-Host "  cert page: $existing | $(NameOf $win 'ExistingCertDetail')"
+Check 'cert page says the certificate is already installed' ($existing -match 'zaten kurulu')
+Check 'cert page names the installed certificate' ((NameOf $win 'ExistingCertDetail') -match 'Ornek Sirket Test Kok CA')
+$skipCert = (El $win 'SkipCertCheck').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState
+Check 'skip is pre-selected' ($skipCert -eq [System.Windows.Automation.ToggleState]::On)
+Check 'no file needed: next enabled without choosing a .crt' ((El $win 'NextBtn').Current.IsEnabled -and -not (NameOf $win 'CertStatus'))
+Click $win 'NextBtn'
+$script:promptSeen = $false
+Wait-For {
+    $n = El $win 'NextBtn'
+    $n -and $n.Current.IsEnabled -and ((El $win 'RunErrorText') -or $n.Current.Name -match 'Model|Özet')
+} 300 'second run finished' {
+    foreach ($l in [E2EWin]::List()) { if ($l -like "$($app.Id) | #32770 | Security Warning*") { $script:promptSeen = $true } }
+} | Out-Null
+Shot 'second-run-finished'
+Check 'second run finished without error' (-not (El $win 'RunErrorText')) $(NameOf $win 'RunErrorText')
+Check 'no Windows certificate prompt on the second run' (-not $script:promptSeen)
+if ($script:promptSeen) { [E2EWin]::ClickYes($app.Id) | Out-Null }
+Check 'CurrentUser\Root unchanged' (@(Get-ChildItem Cert:\CurrentUser\Root).Count -eq $rootBefore)
+Check 'CA bundle not rewritten (same Hermes, nothing to repair)' (@(Get-ChildItem $hh -Filter 'company-ca-bundle_backup_*.pem' -ErrorAction SilentlyContinue).Count -eq $backupsBefore)
+Click $win 'NextBtn'
+Wait-For { (El $win 'SummaryTitle') -or (El $win 'ModelEnableCheck') } 60 'after run (2nd)' | Out-Null
+if (El $win 'ModelEnableCheck') {
+    $mc = (El $win 'ModelEnableCheck').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState
+    Check 'model already configured -> model step defaults to not changing it' ($mc -ne [System.Windows.Automation.ToggleState]::On)
+    Click $win 'NextBtn'
+    Wait-For { El $win 'SummaryTitle' } 60 'summary (2nd)' | Out-Null
+}
+Shot 'second-run-summary'
+Click $win 'NextBtn'
+Start-Sleep -Seconds 2
+if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+$log2 = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'HermesKurulumAsistani\logs') -Filter *.log | Sort-Object LastWriteTime | Select-Object -Last 1
+$log2Text = Get-Content -Raw $log2.FullName
+Check 'log: status detected as Installed' ($log2Text -match 'Sertifika durumu: Installed')
+Check 'log: step finished as already installed' ($log2Text -match 'Zaten kurulu')
+Save-AppLogs
+
 if ($script:failures.Count) { Write-Host "`nE2E FAILED: $($script:failures -join '; ')"; exit 1 }
 Write-Host "`nE2E PASSED"

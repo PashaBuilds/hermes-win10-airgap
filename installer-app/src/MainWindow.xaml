@@ -147,9 +147,19 @@
                         <StackPanel x:Name="PageCert" Visibility="Collapsed">
                             <TextBlock Text="2. Şirket sertifikası" Style="{StaticResource H1}"/>
                             <TextBlock Style="{StaticResource Lead}" Text="Şirketinizin iç sitesinden indirdiğiniz kök sertifika dosyasını (.crt / .cer / .pem) seçin. Dosyanın adı önemli değil; yeniden adlandırmanıza veya bir klasöre kopyalamanıza gerek yok. Bu adım olmadan Hermes şirket içi model sunucusuna bağlanırken sertifika hatası verebilir."/>
+                            <Border x:Name="ExistingCertPanel" Visibility="Collapsed" CornerRadius="10" Padding="16" Margin="0,0,0,14" Background="{StaticResource GoodSoft}">
+                                <DockPanel>
+                                    <Button x:Name="ReinstallCertBtn" DockPanel.Dock="Right" VerticalAlignment="Top" Content="Yeni sertifika seç / yeniden kur" Style="{StaticResource Secondary}" Margin="12,0,0,0" Click="PickCert_Click"/>
+                                    <StackPanel>
+                                        <TextBlock x:Name="ExistingCertTitle" FontWeight="SemiBold" FontSize="15"/>
+                                        <TextBlock x:Name="ExistingCertDetail" TextWrapping="Wrap" Margin="0,6,0,0" FontSize="12.5"/>
+                                        <TextBlock x:Name="ExistingCertMissing" TextWrapping="Wrap" Margin="0,6,0,0" FontSize="12.5"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
                             <Border Style="{StaticResource CardBorder}">
                                 <StackPanel>
-                                    <TextBlock Text="Sertifika dosyası" Style="{StaticResource Label}"/>
+                                    <TextBlock x:Name="CertFileLabel" Text="Sertifika dosyası" Style="{StaticResource Label}"/>
                                     <DockPanel>
                                         <Button DockPanel.Dock="Right" Content="Sertifika seç…" Style="{StaticResource Primary}" Margin="8,0,0,0" Click="PickCert_Click"/>
                                         <TextBox x:Name="CertPathBox" IsReadOnly="True"/>

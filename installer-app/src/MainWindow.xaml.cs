@@ -35,6 +35,9 @@ namespace HermesKurulum
         InstalledInfo _installedNow;
         BundleInfo _bundle;
         CertCheck _cert;
+        CertStatusInfo _certStatus;
+        bool _certOverride;
+        enum CertPlan { NewFile, Existing, Skip }
         string _certPath;
         Page _page = Page.Package;
         bool _busy;
@@ -103,8 +106,7 @@ namespace HermesKurulum
             ChipInstalled.Text = _installedBefore?.Display ?? "?";
             SkipInstallCheck.IsEnabled = _installedBefore?.IsInstalled == true;
             if (!Environment.Is64BitOperatingSystem) ShowBundleError("Bu paket yalnızca 64-bit Windows'ta çalışır.");
-            var cur = CertificateInstaller.DescribeCurrent(_env);
-            CurrentCertText.Text = cur == null ? "Şu an ayarlı bir sertifika paketi yok." : "Şu anki ayar: SSL_CERT_FILE = " + cur;
+            RefreshCertStatus();
             AutoFindBundle();
             ApplyCommandLine();
             ShowPage(Page.Package);
@@ -194,8 +196,10 @@ namespace HermesKurulum
                 case Page.Cert:
                     BackBtn.IsEnabled = true;
                     NextBtn.Content = SkipInstallCheck.IsChecked == true ? "Uygula  ▶" : "Kurulumu başlat  ▶";
-                    NextBtn.IsEnabled = SkipCertCheck.IsChecked == true || (_cert != null && _cert.Ok);
-                    if (!NextBtn.IsEnabled) FooterHint.Text = "Sertifika dosyasını seçin ya da adımı atlayın.";
+                    NextBtn.IsEnabled = CurrentCertPlan() != null;
+                    if (!NextBtn.IsEnabled)
+                        FooterHint.Text = _certStatus?.State == CertState.Expired ? "Kurulu sertifikanın süresi dolmuş: yeni sertifika dosyasını seçin."
+                                                                                   : "Sertifika dosyasını seçin ya da adımı atlayın.";
                     break;
                 case Page.Run:
                     BackBtn.Visibility = Visibility.Collapsed;
@@ -227,7 +231,7 @@ namespace HermesKurulum
                     break;
                 case Page.Cert:
                     if (!ConfirmStart()) return;
-                    _steps[1].State = SkipCertCheck.IsChecked == true ? ItemState.Skipped : ItemState.Done;
+                    _steps[1].State = CurrentCertPlan() == CertPlan.NewFile ? ItemState.Done : ItemState.Skipped;
                     ShowPage(Page.Run);
                     await RunAllAsync();
                     break;
@@ -404,8 +408,84 @@ namespace HermesKurulum
             LoadCert(dlg.FileName);
         }
 
+        // ------------------------------------------------------------------ "is the certificate already set up?"
+        void RefreshCertStatus()
+        {
+            try
+            {
+                _certStatus = CertificateStatus.Detect(_paths, _env, _installedBefore?.Runtime?.CertifiBundle,
+                                                       CertificateStatus.InCurrentUserStore, DateTime.Now);
+            }
+            catch (Exception ex) { _log.Warn("Sertifika durumu okunamadı: " + ex.Message); _certStatus = new CertStatusInfo(); }
+            var st = _certStatus;
+            _log.Info("Sertifika durumu: " + st.State + (st.Legacy ? " (eski betik)" : "") + " · " + st.Describe() +
+                      (st.Missing.Count > 0 ? " · eksik: " + string.Join("; ", st.Missing) : "") +
+                      (st.NeedsBundleRefresh ? " · CA paketi tazelenecek" : "") +
+                      (st.StoreChecked ? " · Windows deposunda " + (st.NotInStore.Count == 0 ? "var" : "yok") : ""));
+            var cur = CertificateInstaller.DescribeCurrent(_env);
+            CurrentCertText.Text = cur == null ? "Şu an ayarlı bir sertifika paketi yok." : "Şu anki ayar: SSL_CERT_FILE = " + cur;
+
+            System.Windows.Media.Brush B(string k) => (System.Windows.Media.Brush)FindResource(k);
+            ExistingCertMissing.Visibility = Visibility.Collapsed;
+            switch (st.State)
+            {
+                case CertState.Installed:
+                case CertState.Partial:
+                    ExistingCertPanel.Visibility = Visibility.Visible;
+                    ExistingCertPanel.Background = B(st.ExpiresSoon ? "WarnSoft" : "GoodSoft");
+                    ExistingCertTitle.Text = "✓ Sertifika zaten kurulu";
+                    ExistingCertTitle.Foreground = B("Good");
+                    ExistingCertDetail.Text = st.Describe() +
+                        (st.Legacy ? "\nEski sertifika betiğiyle kurulmuş (" + st.Source + ")." : "") +
+                        "\nBu adım atlanacak; dosya seçmenize gerek yok ve Windows onay penceresi açılmaz." +
+                        (st.ExpiresSoon ? "\n! Sertifikanın süresi " + CertificateStatus.ExpiryWarningDays + " gün içinde doluyor; şirket sitesinden yenisini indirip \"Yeni sertifika seç\" ile kurun." : "");
+                    var notes = new List<string>();
+                    if (st.State == CertState.Partial)
+                        notes.Add("Eksikler otomatik tamamlanacak (dosya istemeden, onay penceresi olmadan):\n• " + string.Join("\n• ", st.Missing));
+                    if (st.NeedsBundleRefresh) notes.Add("CA paketi kurulu Hermes'in güncel listesiyle sessizce tazelenecek.");
+                    if (st.StoreChecked && st.NotInStore.Count > 0) notes.Add("Bilgi: sertifika Windows kullanıcı deposunda değil (isteğe bağlı; eklemek için aşağıdaki kutuyu işaretleyin).");
+                    if (notes.Count > 0) { ExistingCertMissing.Text = string.Join("\n", notes); ExistingCertMissing.Visibility = Visibility.Visible; }
+                    SkipCertCheck.IsEnabled = true;
+                    SkipCertCheck.IsChecked = true;
+                    SkipCertCheck.Content = "Sertifika adımını atla (zaten kurulu)";
+                    // Only "checked" when it is already in the store (then it is a no-op): never a surprise prompt.
+                    StoreCheck.IsChecked = st.NotInStore.Count == 0;
+                    CertFileLabel.Text = "Yeni sertifika dosyası (isteğe bağlı; yalnızca sertifikayı değiştirmek için)";
+                    break;
+                case CertState.Expired:
+                    ExistingCertPanel.Visibility = Visibility.Visible;
+                    ExistingCertPanel.Background = B("BadSoft");
+                    ExistingCertTitle.Text = "✕ Kurulu sertifikanın süresi dolmuş";
+                    ExistingCertTitle.Foreground = B("Bad");
+                    ExistingCertDetail.Text = st.Describe() + "\nŞirket sitesinden güncel sertifikayı indirip seçin.";
+                    SkipCertCheck.IsChecked = false;
+                    SkipCertCheck.IsEnabled = false;
+                    break;
+                default:
+                    ExistingCertPanel.Visibility = Visibility.Collapsed;
+                    break;
+            }
+        }
+
+        static bool SameCertificates(IEnumerable<CertInfo> a, IEnumerable<CertInfo> b) =>
+            new HashSet<string>(a.Select(c => c.Cert.Thumbprint), StringComparer.OrdinalIgnoreCase)
+                .SetEquals(b.Select(c => c.Cert.Thumbprint));
+
+        /// <summary>null = cannot continue yet (a file is needed).</summary>
+        CertPlan? CurrentCertPlan()
+        {
+            bool installed = _certStatus != null && (_certStatus.State == CertState.Installed || _certStatus.State == CertState.Partial);
+            if (_certOverride && _cert != null && _cert.Ok)
+                return installed && SameCertificates(_cert.Certificates, _certStatus.Certificates) ? CertPlan.Existing : CertPlan.NewFile;
+            if (installed) return CertPlan.Existing;
+            if (_certStatus?.State == CertState.Expired) return null;
+            if (SkipCertCheck.IsChecked == true) return CertPlan.Skip;
+            return null;
+        }
+
         void LoadCert(string path)
         {
+            _certOverride = true;
             _certPath = path;
             CertPathBox.Text = path;
             _cert = CertificateTools.Inspect(path, DateTime.Now);
@@ -479,7 +559,8 @@ namespace HermesKurulum
             var ct = _cts.Token;
 
             bool doInstall = SkipInstallCheck.IsChecked != true;
-            bool doCert = SkipCertCheck.IsChecked != true && _cert != null && _cert.Ok;
+            var certPlan = CurrentCertPlan() ?? CertPlan.Skip;
+            bool doCert = certPlan == CertPlan.NewFile;
             TaskVm tSha = null, tExtract = null, tInstall = null, tCert = null;
             if (doInstall && _bundle.IsZip)
             {
@@ -491,7 +572,7 @@ namespace HermesKurulum
                 var from = _installedBefore?.IsInstalled == true ? (_installedBefore.Version ?? "mevcut kurulum") : null;
                 tInstall = AddTask("install", from == null ? "Hermes " + _bundle.Release + " kuruluyor" : "Hermes güncelleniyor: " + from + " → " + _bundle.Release, 55);
             }
-            tCert = AddTask("cert", doCert ? "Şirket sertifikası kuruluyor" : "Şirket sertifikası", 5);
+            tCert = AddTask("cert", doCert ? "Şirket sertifikası kuruluyor" : certPlan == CertPlan.Existing ? "Şirket sertifikası (zaten kurulu)" : "Şirket sertifikası", 5);
             var tVerify = AddTask("verify", "Doğrulama: hermes --version", 10);
             RunTitle.Text = doInstall ? "3. Kurulum / güncelleme" : "3. Ayarlar uygulanıyor";
             RunLead.Text = doInstall ? "Lütfen bekleyin; bu işlem genellikle 5–15 dakika sürer. Bu sırada Hermes'i açmayın ve bu pencereyi kapatmayın." : "Kurulum atlandı; sertifika ve doğrulama adımları çalışıyor.";
@@ -545,19 +626,7 @@ namespace HermesKurulum
                         bool toStore = StoreCheckValue;
                         SetProgress(tCert, 0.2, "CA paketi ve kullanıcı değişkenleri yazılıyor");
                         var res = await Task.Run(() => installer.Install(_paths, _cert.Certificates, _installedNow?.Runtime?.CertifiBundle, false, _stamp));
-                        if (toStore)
-                        {
-                            SetProgress(tCert, 0.6, "Windows bir onay penceresi açabilir: sertifikayı eklemek için \"Evet\"e basın");
-                            CurrentDetail.Text = "Windows onay penceresi bekleniyor… Görmüyorsanız görev çubuğuna bakın ve \"Evet\"e basın.";
-                            var storeTask = NativeDialogs.RunSta(() => { installer.AddToStore(_cert.Certificates, res); return true; });
-                            var raised = new HashSet<IntPtr>();
-                            while (!storeTask.IsCompleted)
-                            {
-                                NativeDialogs.BringToFront(raised, m => _log.Info(m));
-                                await Task.WhenAny(storeTask, Task.Delay(400));
-                            }
-                            await storeTask;
-                        }
+                        if (toStore) await AddToStoreAsync(tCert, installer, _cert.Certificates, res);
                         foreach (var s in res.StoreAdded) _log.Ok("Windows deposu: " + s);
                         foreach (var w in res.StoreWarnings) _log.Warn(w);
                         _certSummary = string.Join(", ", _cert.Certificates.Select(c => c.Subject)) + " → " + res.BundlePath +
@@ -567,6 +636,12 @@ namespace HermesKurulum
                                (res.StoreWarnings.Count > 0 ? " · Windows deposu: " + res.StoreWarnings[0] : res.StoreAdded.Count > 0 ? " · Windows deposuna eklendi" : ""));
                     }
                     catch (Exception ex) { throw new StepException(tCert, "Sertifika kurulamadı: " + ex.Message); }
+                }
+                else if (certPlan == CertPlan.Existing)
+                {
+                    Begin(tCert);
+                    try { await KeepExistingCertAsync(tCert); }
+                    catch (Exception ex) { throw new StepException(tCert, "Mevcut sertifika kurulumu tamamlanamadı: " + ex.Message); }
                 }
                 else
                 {
@@ -601,6 +676,71 @@ namespace HermesKurulum
                 _ticker.Stop();
                 UpdateButtons();
             }
+        }
+
+        async Task AddToStoreAsync(TaskVm t, CertificateInstaller installer, IList<CertInfo> certs, CertInstallResult res)
+        {
+            // Nothing to add -> no Windows prompt at all.
+            if (certs.Where(c => c.IsCa != false).All(CertificateStatus.InCurrentUserStore))
+            {
+                installer.AddToStore(certs, res);   // only records "zaten vardı"
+                return;
+            }
+            SetProgress(t, 0.6, "Windows bir onay penceresi açabilir: sertifikayı eklemek için \"Evet\"e basın");
+            CurrentDetail.Text = "Windows onay penceresi bekleniyor… Görmüyorsanız görev çubuğuna bakın ve \"Evet\"e basın.";
+            var storeTask = NativeDialogs.RunSta(() => { installer.AddToStore(certs, res); return true; });
+            var raised = new HashSet<IntPtr>();
+            while (!storeTask.IsCompleted)
+            {
+                NativeDialogs.BringToFront(raised, m => _log.Info(m));
+                await Task.WhenAny(storeTask, Task.Delay(400));
+            }
+            await storeTask;
+        }
+
+        /// <summary>The certificate was set up before: do not ask for the .crt again and do not show a Windows prompt.
+        /// Re-checks against the (possibly just updated) Hermes and silently repairs from the existing company
+        /// certificate: missing files/variables, and the bundle's certifi part after a Hermes update.</summary>
+        async Task KeepExistingCertAsync(TaskVm t)
+        {
+            SetProgress(t, 0.3, "Mevcut sertifika kurulumu kontrol ediliyor");
+            var certifi = _installedNow?.Runtime?.CertifiBundle;
+            var st = await Task.Run(() => CertificateStatus.Detect(_paths, _env, certifi, null, DateTime.Now));
+            _log.Info("Sertifika durumu (kurulumdan sonra): " + st.State + " · " + st.Describe() +
+                      (st.Missing.Count > 0 ? " · eksik: " + string.Join("; ", st.Missing) : "") + (st.NeedsBundleRefresh ? " · CA paketi tazelenecek" : ""));
+            if (st.State != CertState.Installed && st.State != CertState.Partial)
+            {
+                _certSummary = "Kurulu sertifika bulunamadı ya da süresi dolmuş";
+                Finish(t, ItemState.Warning, "Kurulu sertifika artık bulunamadı ya da süresi dolmuş; yeni dosya seçerek asistanı tekrar çalıştırın.");
+                return;
+            }
+            bool wantStore = StoreCheckValue;
+            if (st.State == CertState.Installed && !st.NeedsBundleRefresh && !wantStore)
+            {
+                _certSummary = "Zaten kurulu: " + st.Describe();
+                _log.Ok("Sertifika adımı: Zaten kurulu, değişiklik yok (dosya istenmedi, Windows onayı yok).");
+                Finish(t, ItemState.Skipped, "Zaten kurulu · " + st.Describe());
+                return;
+            }
+            var done = new List<string>(st.Missing);
+            if (st.NeedsBundleRefresh) done.Add("CA paketi yeni Hermes'in certifi listesiyle tazelendi");
+            var installer = new CertificateInstaller(_env, m => _log.Info(m));
+            var res = new CertInstallResult();
+            if (st.State == CertState.Partial || st.NeedsBundleRefresh)
+            {
+                SetProgress(t, 0.5, "Eksikler mevcut sertifikadan tamamlanıyor (dosya ve onay gerekmez)");
+                res = await Task.Run(() => installer.Install(_paths, st.Certificates, certifi, false, _stamp));
+            }
+            if (wantStore) await AddToStoreAsync(t, installer, st.Certificates, res);
+            foreach (var a in res.StoreAdded) _log.Ok("Windows deposu: " + a);
+            foreach (var w in res.StoreWarnings) _log.Warn(w);
+            _certSummary = "Zaten kurulu: " + st.Describe() + (done.Count > 0 ? " (tamamlandı: " + string.Join("; ", done) + ")" : "");
+            _log.Ok("Sertifika adımı: Zaten kurulu" + (done.Count > 0 ? "; tamamlandı: " + string.Join("; ", done) : ""));
+            if (done.Count == 0 && !res.StoreAdded.Any(a => !a.Contains("zaten vardı")))
+                Finish(t, ItemState.Skipped, "Zaten kurulu · " + st.Describe());
+            else
+                Finish(t, res.StoreWarnings.Count > 0 ? ItemState.Warning : ItemState.Done,
+                       "Zaten kurulu · " + (done.Count > 0 ? "tamamlandı: " + string.Join("; ", done) : "Windows deposuna eklendi"));
         }
 
         bool StoreCheckValue => Dispatcher.Invoke(() => StoreCheck.IsChecked == true);

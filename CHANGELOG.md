@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Kurulum Asistanı v1.0.1 — 2026-11-26
+- **Sertifika bir kez kurulur:** Asistan açılışta mevcut kurulumu tanıyor. Kontrol ettikleri: `company-ca.pem`, `company-ca-bundle.pem`, dört kullanıcı değişkeni, Windows deposu ve eski betikle yapılmış kurulum.
+- **Zaten kuruluysa:** Adım atlanıyor; dosya istenmiyor ve onay penceresi açılmıyor.
+- **Eksik varsa:** Mevcut sertifikadan sessizce tamamlanıyor.
+- **Süre kontrolü:** 30 gün içinde dolacak sertifika için uyarı veriliyor. Süresi dolmuşsa yeni dosya isteniyor.
+- **Güncellemeden sonra:** certifi listesi değiştiyse CA paketi sessizce tazeleniyor.
+- **Testler:** 17 yeni birim testi eklendi. Windows e2e testine ikinci bir çalıştırma eklendi (zaten kurulu durumu; onay penceresi açılmamalı).
+
 ## Kurulum Asistanı v1.0.0 — 2026-11-26
 - **Yeni:** `installer-app/` altına `HermesKurulumAsistani.exe` eklendi. İntranet PC için Türkçe, pencereli kurulum ve güncelleme sihirbazı. Adımları: paket ve SHA256 kontrolü, ZIP'i açma, paketin kendi `InstallOrUpdateHermesAirgapped` betiğini `Auto CleanVenv` ile çalıştırma (canlı ilerleme ve kayıt dosyasıyla), şirket sertifikasının kurulması (kullanıcı düzeyinde ortam değişkenleri, CA paketi ve isteğe bağlı CurrentUser deposu; yönetici yetkisi gerekmez), isteğe bağlı `hermes model` → Custom endpoint ayarı (Hermes'in kendi koduyla), özet ekranı ve geri alma.
 - **Yeni workflow:** `installer-app.yml` exe'yi Windows'ta derler, test eder, açılış testinden geçirir ve artifact olarak yükler. Airgap paket release'lerine dokunmaz.
