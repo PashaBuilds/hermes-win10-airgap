@@ -242,7 +242,9 @@ namespace HermesKurulum.Core
                 : "Kullanıcı değişkeni: " + name + " = " + value + (string.IsNullOrEmpty(old) ? "" : "  (önceki: " + old + ")"));
         }
 
-        void AddToStore(IList<CertInfo> certs, CertInstallResult res)
+        /// <summary>CurrentUser\Root (self-signed) or CurrentUser\CA (intermediate). Adding to Root shows a
+        /// Windows confirmation prompt; call it from an STA thread and keep the prompt visible (NativeDialogs).</summary>
+        public void AddToStore(IList<CertInfo> certs, CertInstallResult res)
         {
             foreach (var c in certs)
             {

@@ -83,6 +83,29 @@ function Hermes-Home {
     return $h
 }
 
+Add-Type -TypeDefinition @"
+using System; using System.Text; using System.Runtime.InteropServices; using System.Collections.Generic;
+public static class E2EWin {
+  delegate bool P(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(P cb, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder sb, int n);
+  public static List<string> List() {
+    var r = new List<string>();
+    EnumWindows((h, l) => { if (!IsWindowVisible(h)) return true; uint pid; GetWindowThreadProcessId(h, out pid);
+      var c = new StringBuilder(64); GetClassName(h, c, 64); var t = new StringBuilder(256); GetWindowText(h, t, 256);
+      r.Add(pid + " | " + c + " | " + t); return true; }, IntPtr.Zero);
+    return r;
+  }
+}
+"@
+function Dump-Windows {
+    Write-Host "  visible top-level windows (pid | class | title):"
+    foreach ($l in [E2EWin]::List()) { if ($l -notmatch '\| $') { Write-Host "    $l" } }
+}
+
 # Clicks "Yes" on the Windows "Security Warning" prompt that adding a root CA to CurrentUser\Root shows.
 $script:certPromptAccepted = $false
 function Accept-CertPrompt {
@@ -103,6 +126,12 @@ function Accept-CertPrompt {
         }
     }
 }
+
+function Save-AppLogs {
+    $d = Join-Path $env:LOCALAPPDATA 'HermesKurulumAsistani\logs'
+    if (Test-Path $d) { Get-ChildItem $d -Filter *.log | ForEach-Object { Copy-Item $_.FullName $OutDir -Force } }
+}
+trap { Save-AppLogs; Dump-Windows; break }
 
 # ---------------------------------------------------------------- 1. old version, installed the classic way
 Step "Installing old bundle with its own script: $OldZip"
@@ -167,15 +196,21 @@ Shot 'cert-page'
 Click $win 'NextBtn'
 
 Step 'Running install (watching progress, accepting the Windows certificate prompt)'
-$midShot = $false
+$script:midShot = $false
+$script:lastDump = [DateTime]::MinValue
 Wait-For {
     $n = El $win 'NextBtn'
     $n -and $n.Current.IsEnabled -and ((El $win 'RunErrorText') -or $n.Current.Name -match 'Model|Özet')
-} 3600 'install finished' {
+} 1500 'install finished' {
     Accept-CertPrompt
-    if (-not $midShot) {
+    if (-not $script:midShot) {
         $p = NameOf $win 'OverallPercent'
-        if ($p -and [int]($p -replace '[^0-9]', '') -ge 50) { Shot 'install-progress'; $midShot = $true; Write-Host "  progress $p, phase: $(NameOf $win 'CurrentPhase')" }
+        if ($p -and [int]($p -replace '[^0-9]', '') -ge 50) { Shot 'install-progress'; $script:midShot = $true; Write-Host "  progress $p, phase: $(NameOf $win 'CurrentPhase')" }
+    }
+    if (((Get-Date) - $script:lastDump).TotalSeconds -ge 60) {
+        $script:lastDump = Get-Date
+        Write-Host "  [$(Get-Date -Format 'HH:mm:ss')] $(NameOf $win 'OverallPercent') $(NameOf $win 'CurrentPhase') | $(NameOf $win 'CurrentDetail')"
+        if ((NameOf $win 'CurrentPhase') -match 'ertifika') { Dump-Windows }
     }
 } | Out-Null
 Shot 'install-finished'

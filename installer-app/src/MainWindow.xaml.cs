@@ -541,8 +541,23 @@ namespace HermesKurulum
                     Begin(tCert);
                     try
                     {
-                        var res = await Task.Run(() => new CertificateInstaller(_env, m => _log.Info(m))
-                            .Install(_paths, _cert.Certificates, _installedNow?.Runtime?.CertifiBundle, StoreCheckValue, _stamp));
+                        var installer = new CertificateInstaller(_env, m => _log.Info(m));
+                        bool toStore = StoreCheckValue;
+                        SetProgress(tCert, 0.2, "CA paketi ve kullanıcı değişkenleri yazılıyor");
+                        var res = await Task.Run(() => installer.Install(_paths, _cert.Certificates, _installedNow?.Runtime?.CertifiBundle, false, _stamp));
+                        if (toStore)
+                        {
+                            SetProgress(tCert, 0.6, "Windows bir onay penceresi açabilir: sertifikayı eklemek için \"Evet\"e basın");
+                            CurrentDetail.Text = "Windows onay penceresi bekleniyor… Görmüyorsanız görev çubuğuna bakın ve \"Evet\"e basın.";
+                            var storeTask = NativeDialogs.RunSta(() => { installer.AddToStore(_cert.Certificates, res); return true; });
+                            var raised = new HashSet<IntPtr>();
+                            while (!storeTask.IsCompleted)
+                            {
+                                NativeDialogs.BringToFront(raised, m => _log.Info(m));
+                                await Task.WhenAny(storeTask, Task.Delay(400));
+                            }
+                            await storeTask;
+                        }
                         foreach (var s in res.StoreAdded) _log.Ok("Windows deposu: " + s);
                         foreach (var w in res.StoreWarnings) _log.Warn(w);
                         _certSummary = string.Join(", ", _cert.Certificates.Select(c => c.Subject)) + " → " + res.BundlePath +
