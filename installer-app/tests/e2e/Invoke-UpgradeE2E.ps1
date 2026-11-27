@@ -216,7 +216,7 @@ $chipInstalled = NameOf $win 'ChipInstalled'; $chipBundle = NameOf $win 'ChipBun
 Write-Host "  chips: installed='$chipInstalled' bundle='$chipBundle'"
 Check 'header shows installed old version' ($chipInstalled -match [regex]::Escape($oldTag))
 Check 'header shows bundle new version' ($chipBundle -match [regex]::Escape($newTag))
-# ---- skip scenario (Paşa's real case): newer package + "Kurulum / güncellemeyi atla" must never look like an update
+# ---- skip scenario (seen in a field test): newer package + "Kurulum / güncellemeyi atla" must never look like an update
 Step 'Skip scenario: newer package + skip -> confirm dialog, amber summary, no green success'
 $sk = (El $win 'SkipInstallCheck').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
 if ($sk.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) { $sk.Toggle() }
