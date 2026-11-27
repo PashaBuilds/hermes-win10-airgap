@@ -77,6 +77,14 @@ namespace HermesKurulum.Core
         }
 
         /// <summary>-1/0/1 comparison of "v0.23.0" style versions (non-numeric parts ignored).</summary>
+        /// <summary>"Hermes Agent v0.23.4 · stable" matches "v0.23.4" (whole version token: 0.23.40 or 10.23.4 do not).</summary>
+        public static bool VersionMatches(string versionOutput, string release)
+        {
+            if (string.IsNullOrEmpty(versionOutput) || string.IsNullOrEmpty(release)) return false;
+            var want = release.Trim().TrimStart('v', 'V');
+            return System.Text.RegularExpressions.Regex.IsMatch(versionOutput, "(?<![0-9.])v?" + System.Text.RegularExpressions.Regex.Escape(want) + "(?![0-9])");
+        }
+
         public static int CompareVersions(string a, string b)
         {
             int[] pa = Parts(a), pb = Parts(b);

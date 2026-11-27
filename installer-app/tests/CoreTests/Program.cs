@@ -68,6 +68,9 @@ static class Program
         Check("v0.23.0 < v0.23.4", HermesPaths.CompareVersions("v0.23.0", "v0.23.4") < 0);
         Check("0.23.10 > 0.23.4", HermesPaths.CompareVersions("0.23.10", "v0.23.4") > 0);
         Check("equal", HermesPaths.CompareVersions("v0.23.4", "0.23.4") == 0);
+        Check("version output matches package", HermesPaths.VersionMatches("Hermes Agent v0.23.4 · stable", "v0.23.4"));
+        Check("old version output does not match package (skip/no-op guard)", !HermesPaths.VersionMatches("Hermes Agent v0.23.0 · stable", "v0.23.4"));
+        Check("0.23.40 / 10.23.4 are not 0.23.4", !HermesPaths.VersionMatches("Hermes Agent v0.23.40", "v0.23.4") && !HermesPaths.VersionMatches("Hermes Agent v10.23.4", "v0.23.4"));
         Check("normalize", HermesPaths.NormalizeVersion("0.23.4") == "v0.23.4" && HermesPaths.NormalizeVersion("V0.23.4") == "v0.23.4");
     }
 
