@@ -226,6 +226,16 @@ namespace HermesKurulum
             switch (_page)
             {
                 case Page.Package:
+                    if (SkipInstallCheck.IsChecked == true && PackageIsNewer())
+                    {
+                        _log.Warn("Paket daha yeni (" + _bundle.Release + ") ama 'Kurulum / güncellemeyi atla' işaretli; onay soruluyor.");
+                        var r = MessageBox.Show("Paket daha yeni (" + _bundle.Release + "). Bu bilgisayarda " + _installedBefore.Version + " kurulu.\n\n" +
+                                                "\"Kurulum / güncellemeyi atla\" işaretli: güncelleme YAPILMAYACAK ve Hermes " + _installedBefore.Version + " sürümünde kalacak.\n\n" +
+                                                "Yine de atlansın mı?\n\nEvet = atla (yalnızca sertifika ve model)\nHayır = güncellemeyi yap (önerilen)",
+                                                Title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+                        if (r != MessageBoxResult.Yes) { SkipInstallCheck.IsChecked = false; _log.Info("Kullanıcı güncellemeyi seçti (atla kaldırıldı)."); }
+                        else _log.Warn("Kullanıcı güncellemeyi atlamayı onayladı.");
+                    }
                     _steps[0].State = SkipInstallCheck.IsChecked == true ? ItemState.Skipped : ItemState.Done;
                     ShowPage(Page.Cert);
                     break;
@@ -331,6 +341,11 @@ namespace HermesKurulum
             UpdateButtons();
         }
 
+        /// <summary>A package is selected and it is newer than the installed Hermes.</summary>
+        bool PackageIsNewer() =>
+            _bundle != null && _installedBefore?.IsInstalled == true && _installedBefore.Version != null &&
+            HermesPaths.CompareVersions(_installedBefore.Version, _bundle.Release) < 0;
+
         string DescribeAction()
         {
             if (_bundle == null) return "";
@@ -391,7 +406,9 @@ namespace HermesKurulum
         void SkipInstall_Changed(object sender, RoutedEventArgs e)
         {
             if (!IsLoaded) return;
-            InfoAction.Text = SkipInstallCheck.IsChecked == true ? "Kurulum atlanacak (yalnızca ayarlar)" : DescribeAction();
+            InfoAction.Text = SkipInstallCheck.IsChecked == true
+                ? (PackageIsNewer() ? "⚠ Güncelleme YAPILMAYACAK: Hermes " + _installedBefore.Version + " sürümünde kalır (paket " + _bundle.Release + ")" : "Kurulum atlanacak (yalnızca ayarlar)")
+                : DescribeAction();
             UpdateButtons();
         }
 
@@ -559,6 +576,9 @@ namespace HermesKurulum
             var ct = _cts.Token;
 
             bool doInstall = SkipInstallCheck.IsChecked != true;
+            _installSkipped = !doInstall;
+            _log.Info(doInstall ? "Kurulum adımı: ÇALIŞACAK (" + DescribeAction() + ")"
+                                : "Kurulum adımı: ATLANDI (kullanıcı 'Kurulum / güncellemeyi atla' seçti)" + (PackageIsNewer() ? " — paket daha yeni: " + _bundle.Release : ""));
             var certPlan = CurrentCertPlan() ?? CertPlan.Skip;
             bool doCert = certPlan == CertPlan.NewFile;
             TaskVm tSha = null, tExtract = null, tInstall = null, tCert = null;
@@ -655,12 +675,14 @@ namespace HermesKurulum
                 _versionAfter = await HermesCommands.VersionAsync(_paths, _env, m => _log.Warn(m), ct);
                 if (_versionAfter == null) throw new StepException(tVerify, "hermes --version çalışmadı. Ayrıntılar kayıt dosyasında.");
                 _log.Ok("hermes --version: " + _versionAfter);
-                if (doInstall && !_versionAfter.Contains(_bundle.Release.TrimStart('v')))
-                    Finish(tVerify, ItemState.Warning, _versionAfter + "  (beklenen " + _bundle.Release + ")");
-                else Finish(tVerify, ItemState.Done, _versionAfter);
+                if (doInstall && !HermesPaths.VersionMatches(_versionAfter, _bundle.Release))
+                    throw new StepException(tVerify, "Kurulum betiği başarıyla bitti ama Hermes sürümü değişmedi: \"" + _versionAfter + "\" (beklenen " + _bundle.Release +
+                                                     "). Güncelleme uygulanmamış olabilir. Kayıt dosyasını iletin: " + _log.FilePath);
+                Finish(tVerify, ItemState.Done, _versionAfter);
 
                 _runOk = true;
-                _steps[2].State = ItemState.Done;
+                // Skipped install must never look like a successful update (green check).
+                _steps[2].State = doInstall ? ItemState.Done : (PackageIsNewer() ? ItemState.Warning : ItemState.Skipped);
                 CurrentPhase.Text = "Tamamlandı";
                 CurrentDetail.Text = _versionAfter;
                 OverallBar.Value = 100; OverallPercent.Text = "100%";
@@ -722,7 +744,7 @@ namespace HermesKurulum
                 Finish(t, ItemState.Skipped, "Zaten kurulu · " + st.Describe());
                 return;
             }
-            var done = new List<string>(st.Missing);
+            var done = st.Missing.Select(RepairedText).ToList();
             if (st.NeedsBundleRefresh) done.Add("CA paketi yeni Hermes'in certifi listesiyle tazelendi");
             var installer = new CertificateInstaller(_env, m => _log.Info(m));
             var res = new CertInstallResult();
@@ -741,6 +763,15 @@ namespace HermesKurulum
             else
                 Finish(t, res.StoreWarnings.Count > 0 ? ItemState.Warning : ItemState.Done,
                        "Zaten kurulu · " + (done.Count > 0 ? "tamamlandı: " + string.Join("; ", done) : "Windows deposuna eklendi"));
+        }
+
+        static string RepairedText(string missing)
+        {
+            if (missing.StartsWith("company-ca.pem yok")) return "company-ca.pem oluşturuldu (eski kurulumdaki sertifikadan)";
+            if (missing.StartsWith("company-ca-bundle.pem")) return "company-ca-bundle.pem yeniden oluşturuldu";
+            int i = missing.IndexOf(" ayarlı değil", StringComparison.Ordinal);
+            if (i > 0) return missing.Substring(0, i) + " ayarlandı";
+            return missing;
         }
 
         bool StoreCheckValue => Dispatcher.Invoke(() => StoreCheck.IsChecked == true);
@@ -945,6 +976,18 @@ namespace HermesKurulum
         }
 
         // ------------------------------------------------------------------ page 5: summary
+        bool _installSkipped;
+
+        void RunUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            _log.Info("Özet: 'Geri dön ve güncellemeyi yap' seçildi.");
+            SkipInstallCheck.IsChecked = false;
+            for (int i = 2; i < _steps.Count; i++) _steps[i].State = ItemState.Pending;
+            _steps[0].State = ItemState.Pending; _steps[1].State = ItemState.Pending;
+            _afterRollback = false;
+            ShowPage(Page.Package);
+        }
+
         void ShowSummary()
         {
             ShowPage(Page.Summary);
@@ -955,10 +998,27 @@ namespace HermesKurulum
             SummaryIcon.Background = (System.Windows.Media.Brush)FindResource(ok ? "Good" : "Bad");
             SummaryGlyph.Text = ok ? "✓" : "✕";
             SummaryTitle.Text = _afterRollback ? "Geri alma tamamlandı" : ok ? "Hermes hazır" : "Kurulum tamamlanamadı";
+            // Update skipped although the package is newer: amber, never "updated".
+            var nowVer = (_installedNow ?? _installedBefore)?.Version;
+            bool skippedOlder = ok && !_afterRollback && _installSkipped && _bundle != null && nowVer != null &&
+                                HermesPaths.CompareVersions(nowVer, _bundle.Release) < 0;
+            UpdateSkippedCard.Visibility = skippedOlder ? Visibility.Visible : Visibility.Collapsed;
+            if (skippedOlder)
+            {
+                SummaryBanner.Background = (System.Windows.Media.Brush)FindResource("WarnSoft");
+                SummaryIcon.Background = (System.Windows.Media.Brush)FindResource("Warn");
+                SummaryGlyph.Text = "!";
+                SummaryTitle.Text = "Güncelleme atlandı: kurulu " + nowVer + ", paket " + _bundle.Release;
+                SummaryLead.Text = "Sertifika ve model ayarları uygulandı, ama Hermes güncellenmedi (\"Kurulum / güncellemeyi atla\" seçiliydi).";
+                UpdateSkippedTitle.Text = "Hermes hâlâ " + nowVer + " — paket " + _bundle.Release;
+                UpdateSkippedText.Text = "Güncellemeyi şimdi yapmak için geri dönün; \"Kurulum / güncellemeyi atla\" kutusu boş olarak gelir.";
+                _steps[4].State = ItemState.Warning;
+            }
             SummaryLead.Text = ok ? "Yeni bir komut satırı açıp `hermes` yazabilir ya da aşağıdan doğrudan açabilirsiniz." : (_runError ?? "") + "  Kayıt dosyasını bu mesajla birlikte iletebilirsiniz.";
             _summary.Add(new KeyValue("Hermes sürümü", _versionAfter ?? (_installedNow ?? _installedBefore)?.Display ?? "?"));
             _summary.Add(new KeyValue("Önceki sürüm", _installedBefore?.Display ?? "?"));
-            if (_bundle != null && SkipInstallCheck.IsChecked != true) _summary.Add(new KeyValue("Paket", _bundle.Release + " · " + (_bundle.ExtractedRoot ?? _bundle.SourcePath)));
+            if (_bundle != null)
+                _summary.Add(new KeyValue("Paket", _bundle.Release + " · " + (_installSkipped ? "KURULMADI (güncelleme atlandı)" : (_bundle.ExtractedRoot ?? _bundle.SourcePath))));
             _summary.Add(new KeyValue("Şirket sertifikası", _certSummary));
             _summary.Add(new KeyValue("Model", _modelSummary));
             _summary.Add(new KeyValue("Ayarlar ve oturumlar", _paths.HermesHome + " (silinmedi)"));
