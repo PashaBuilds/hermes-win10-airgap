@@ -104,6 +104,17 @@ public static class E2EWin {
       return true; }, IntPtr.Zero);
     return done;
   }
+  // first visible #32770 dialog of the process whose title starts with the given text
+  public static IntPtr FindDialog(int procId, string titlePrefix) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows((h, l) => { if (!IsWindowVisible(h)) return true; uint pid; GetWindowThreadProcessId(h, out pid);
+      if (pid != (uint)procId) return true;
+      var c = new StringBuilder(64); GetClassName(h, c, 64); var t = new StringBuilder(256); GetWindowText(h, t, 256);
+      if (c.ToString() == "#32770" && t.ToString().StartsWith(titlePrefix)) { found = h; return false; }
+      return true; }, IntPtr.Zero);
+    return found;
+  }
+  public static void Command(IntPtr h, int id) { PostMessage(h, 0x0111, (IntPtr)id, IntPtr.Zero); }
   public static List<string> List() {
     var r = new List<string>();
     EnumWindows((h, l) => { if (!IsWindowVisible(h)) return true; uint pid; GetWindowThreadProcessId(h, out pid);
@@ -205,6 +216,44 @@ $chipInstalled = NameOf $win 'ChipInstalled'; $chipBundle = NameOf $win 'ChipBun
 Write-Host "  chips: installed='$chipInstalled' bundle='$chipBundle'"
 Check 'header shows installed old version' ($chipInstalled -match [regex]::Escape($oldTag))
 Check 'header shows bundle new version' ($chipBundle -match [regex]::Escape($newTag))
+# ---- skip scenario (seen in a field test): newer package + "Kurulum / güncellemeyi atla" must never look like an update
+Step 'Skip scenario: newer package + skip -> confirm dialog, amber summary, no green success'
+$sk = (El $win 'SkipInstallCheck').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+if ($sk.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) { $sk.Toggle() }
+Write-Host "  action: $(NameOf $win 'InfoAction')"
+Check 'package page warns that the update will NOT be done' ((NameOf $win 'InfoAction') -match 'YAPILMAYACAK')
+Click $win 'NextBtn'
+$dlg = Wait-For { $h = [E2EWin]::FindDialog($app.Id, 'Hermes Kurulum'); if ($h -ne [IntPtr]::Zero) { $h } } 20 'skip confirm dialog'
+Shot 'skip-confirm-dialog'
+Check 'skip with a newer package asks for confirmation' ($dlg -ne [IntPtr]::Zero)
+[E2EWin]::Command($dlg, 6)   # IDYES = "Yine de atla"
+Wait-For { ((NameOf $win 'CertStatus') -match '^(✓|✕)') -and (El $win 'NextBtn').Current.IsEnabled } 30 'certificate page (skip run)' | Out-Null
+Click $win 'NextBtn'
+Wait-For {
+    $n = El $win 'NextBtn'
+    $n -and $n.Current.IsEnabled -and ((El $win 'RunErrorText') -or $n.Current.Name -match 'Model|Özet')
+} 600 'skip run finished' { Accept-CertPrompt } | Out-Null
+Check 'skip run finished without error' (-not (El $win 'RunErrorText')) $(NameOf $win 'RunErrorText')
+Click $win 'NextBtn'
+Wait-For { (El $win 'SummaryTitle') -or (El $win 'ModelEnableCheck') } 60 'after skip run' | Out-Null
+if (El $win 'ModelEnableCheck') {
+    $m = (El $win 'ModelEnableCheck').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+    if ($m.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) { $m.Toggle() }
+    Click $win 'NextBtn'
+    Wait-For { El $win 'SummaryTitle' } 60 'summary (skip run)' | Out-Null
+}
+$st = NameOf $win 'SummaryTitle'
+Shot 'skip-summary'
+Write-Host "  summary: $st"
+Check 'summary does NOT say "Hermes hazır" after a skipped update' ($st -ne 'Hermes hazır')
+Check "summary says the update was skipped ($oldTag -> $newTag)" (($st -match 'Güncelleme atlandı') -and ($st -match [regex]::Escape($oldTag)) -and ($st -match [regex]::Escape($newTag)))
+Check 'summary offers "Geri dön ve güncellemeyi yap"' ([bool](El $win 'RunUpdateBtn'))
+Check 'hermes is still the old version (nothing installed)' ((Hermes-Version) -match [regex]::Escape($oldTag.TrimStart('v')))
+Click $win 'RunUpdateBtn'
+Wait-For { $e = El $win 'NextBtn'; $e -and $e.Current.IsEnabled -and (El $win 'SkipInstallCheck') } 30 'back on package page' | Out-Null
+$sk2 = (El $win 'SkipInstallCheck').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState
+Check 'back on package page with skip cleared' ($sk2 -eq [System.Windows.Automation.ToggleState]::Off)
+
 Shot 'package-page'
 Click $win 'NextBtn'
 

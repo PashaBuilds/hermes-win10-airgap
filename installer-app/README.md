@@ -18,6 +18,8 @@ Kayıt dosyası: `%LOCALAPPDATA%\HermesKurulumAsistani\logs\kurulum_<tarih>.log`
 
 **Komut satırından ön seçim (isteğe bağlı):** `HermesKurulumAsistani.exe --paket <zip|klasör> --sertifika <.crt> --klasor <açılacak yer>`. Örneğin BT ekibi hazır bir kısayol dağıtabilir. Exe ile aynı klasörde (ya da İndirilenler'de) bir `HermesAirgapBundle_*_Win10_Desktop.zip` varsa zaten kendiliğinden seçilir.
 
+**Atla kutusuna dikkat:** "Kurulum / güncellemeyi atla" işaretliyken Hermes güncellenmez. Paket daha yeniyse asistan önce onay sorar. Özet sayfasında turuncu "Güncelleme atlandı" yazısı ve **Geri dön ve güncellemeyi yap** düğmesi görünür. Kurulum adımı 0 ile bitip sürüm değişmediyse bu durum hata olarak gösterilir.
+
 **Yalnızca sertifika ya da model:** 1. adımdaki *Kurulum / güncellemeyi atla* kutusu işaretlenirse paket seçmeye gerek kalmaz. Sertifikayı yenilemek veya modeli değiştirmek için asistan tek başına da çalıştırılabilir.
 
 ## Sertifika nasıl kuruluyor?

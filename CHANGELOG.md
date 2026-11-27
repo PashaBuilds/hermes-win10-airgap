@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## Kurulum Asistanı v1.0.2 — 2026-11-27
+- **Sahada görülen sorun:** "Kurulum / güncellemeyi atla" işaretliyken asistan güncelleme yapmadı. Buna rağmen kurulum adımında yeşil tik ve "Hermes hazır" gösterdi; Hermes 0.23.0'da kaldı.
+- **Yeni davranış:**
+  - **Onay sorusu:** Paket daha yeniyse atlamadan önce "Paket daha yeni (vX). Yine de atlansın mı?" diye soruluyor. Varsayılan cevap "Hayır, güncelle".
+  - **Paket sayfası:** "⚠ Güncelleme YAPILMAYACAK" uyarısı gösteriliyor.
+  - **Adım rengi:** Atlanan kurulum adımı yeşil değil; turuncu (!) ya da gri (–) görünüyor.
+  - **Özet sayfası:** "Hermes hazır" yerine turuncu "Güncelleme atlandı: kurulu vX, paket vY" çıkıyor. Yanında **Geri dön ve güncellemeyi yap** düğmesi var.
+- **Koruma:** Kurulum betiği 0 ile bitip `hermes --version` paket sürümünü göstermezse bu artık hata sayılıyor; kayıt dosyası gösteriliyor. Kayda "Kurulum adımı: ÇALIŞACAK/ATLANDI" satırı yazılıyor.
+- **Sertifika özeti:** Tamamlanan işler geçmiş zamanla yazılıyor (ör. "company-ca.pem oluşturuldu").
+- **Testler:** Windows e2e testine, sahadaki durumu birebir tekrarlayan bir atla senaryosu eklendi. 3 yeni birim testi eklendi.
+
 ## Kurulum Asistanı v1.0.1 — 2026-11-26
 - **Sertifika bir kez kurulur:** Asistan açılışta mevcut kurulumu tanıyor. Kontrol ettikleri: `company-ca.pem`, `company-ca-bundle.pem`, dört kullanıcı değişkeni, Windows deposu ve eski betikle yapılmış kurulum.
 - **Zaten kuruluysa:** Adım atlanıyor; dosya istenmiyor ve onay penceresi açılmıyor.
